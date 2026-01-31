@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Neo MVP</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: white;
+      font-family: 'Outfit', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .demo-content {
+      text-align: center;
+      max-width: 600px;
+    }
+
+    h1 {
+      font-size: 3rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p {
+      color: #9ca3af;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="demo-content">
+    <h1>Agent Neo</h1>
+    <p>This is a React-based Agent exported as a Web Component. It can be easily integrated into any Angular, Vue, or
+      Vanilla JS application.</p>
+  </div>
+
+  <!-- Web Component usage -->
+  <agent-neo id="my-agent" context="MVP Dashboard"></agent-neo>
+
+  <script type="module" src="/src/main.tsx"></script>
+  <script>
+    // Simulate Angular setting properties
+    const agent = document.getElementById('my-agent');
+
+    const appConfig = {
+      endpoints: [
+        {
+          name: 'createReport',
+          url: 'https://jsonplaceholder.typicode.com/posts', // Mock endpoint
+          method: 'POST',
+          description: 'Creates a new report',
+          payloadTemplate: { source: 'agent-neo' }
+        }
+      ],
+      secrets: {
+        geminiApiKey: 'mock-key'
+      }
+    };
+
+    const currentUser = {
+      id: 'user-123',
+      name: 'Neo Explorer'
+    };
+
+    // Set properties (r2wc handles JSON-to-object conversion for attributes, but setting properties directly is also possible if configured)
+    // For r2wc json props, we can set them as attributes or properties.
+    agent.config = appConfig;
+    agent.user = currentUser;
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+
+:root {
+  --agent-primary: #6366f1;
+  --agent-primary-hover: #4f46e5;
+  --agent-bg-glass: rgba(255, 255, 255, 0.7);
+  --agent-bg-glass-dark: rgba(17, 24, 39, 0.8);
+  --agent-border-glass: rgba(255, 255, 255, 0.2);
+  --agent-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+}
+
+.agent-neo-font {
+  font-family: 'Outfit', sans-serif;
+}
+
+.glass-morphism {
+  background: var(--agent-bg-glass);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--agent-border-glass);
+  box-shadow: var(--agent-shadow);
+  border-radius: 16px;
+}
+
+.glass-morphism-dark {
+  background: var(--agent-bg-glass-dark);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--agent-shadow);
+  border-radius: 16px;
+}
+
+.floating-avatar {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 64px;
+  height: 64px;
+  cursor: pointer;
+  z-index: 9999;
+  transition: transform 0.3s ease;
+}
+
+.floating-avatar:hover {
+  transform: scale(1.1);
+}
+
+.chat-container {
+  position: fixed;
+  bottom: 100px;
+  right: 24px;
+  width: 380px;
+  height: 500px;
+  display: flex;
+  flex-direction: column;
+  z-index: 9998;
+  overflow: hidden;
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.greeting-bubble {
+  position: fixed;
+  bottom: 35px;
+  right: 100px;
+  padding: 12px 20px;
+  max-width: 250px;
+  z-index: 9999;
+  font-size: 14px;
+  color: #1f2937;
+  pointer-events: none;
+}
+
+.action-button {
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.action-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+}
