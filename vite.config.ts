@@ -11,7 +11,7 @@ export default defineConfig({
   ],
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/main.tsx'),
+      entry: resolve(__dirname, 'src/index.ts'),
       name: 'AgentNeo',
       fileName: 'agent-neo',
       formats: ['es'],
@@ -22,12 +22,13 @@ export default defineConfig({
         'react-dom',
         'framer-motion',
         'lucide-react',
-        '@r2wc/react-to-web-component'
       ],
       output: {
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM',
+          'framer-motion': 'motion',
+          'lucide-react': 'lucide',
         },
       },
     },

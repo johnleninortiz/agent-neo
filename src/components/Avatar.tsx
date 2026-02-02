@@ -48,6 +48,7 @@ const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName }) => {
           justifyContent: 'center',
           background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
           color: 'white',
+          borderRadius: '50%',
         }}
       >
         <Bot size={32} />

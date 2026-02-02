@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, X, FileText, ChevronRight } from 'lucide-react';
-import { motion } from 'framer-motion';
-import type { AppConfig, Message, User } from '../types';
-import { createReport } from '../services/api';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, X, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { AppConfig, Message, User, InteractionStep, InteractionOption } from '../types';
+import { callLLM, callEndpoint } from '../services/api';
 
 interface ChatWindowProps {
   onClose: () => void;
@@ -14,159 +14,244 @@ interface ChatWindowProps {
 const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: '1',
-      text: `Hi ${user?.name || 'there'}! I'm ready to assist you with the ${context || 'current'} task.`,
+      id: 'msg-initial',
+      text: `Hi ${user?.name || 'there'}! I'm ready to assist you.`,
       sender: 'agent',
       timestamp: Date.now(),
     },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [currentStep, setCurrentStep] = useState<InteractionStep | undefined>();
+  const [workflowState, setWorkflowState] = useState<Record<string, any>>({});
+  const [lastActionResult, setLastActionResult] = useState<any>(null);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Helper for variable interpolation
+  const interpolate = useCallback((text: string, state: Record<string, any>): string => {
+    if (!text) return text;
+    let result = text;
+    for (const key in state) {
+      result = result.replace(new RegExp(`{{${key}}}`, 'g'), state[key]);
+    }
+    return result;
+  }, []);
+
+  const addMessage = useCallback((text: string, sender: 'agent' | 'user') => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        text,
+        sender,
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
+
+  const goToStep = useCallback((stepId: string, stateUpdate: Record<string, any> = {}) => {
+    const updatedState = { ...workflowState, ...stateUpdate };
+    setWorkflowState(updatedState);
+
+    const step = config.workflow?.find(s => s.id === stepId);
+    if (step) {
+      // Check for skip condition
+      if (step.skipIf) {
+        try {
+          // Simple evaluation of skipIf (e.g. "workflowState.reportName")
+          const shouldSkip = !!updatedState[step.skipIf.replace('workflowState.', '')];
+          if (shouldSkip) {
+            console.log(`Skipping step ${stepId} because ${step.skipIf} is present.`);
+            const nextStepId = step.options?.[0]?.nextStepId;
+            if (nextStepId) {
+              goToStep(nextStepId, updatedState);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("Skip evaluation failed:", e);
+        }
+      }
+
+      setCurrentStep(step);
+      addMessage(interpolate(step.message, updatedState), 'agent');
+    }
+  }, [config.workflow, workflowState, addMessage, interpolate]);
+
+  // Initial step
+  useEffect(() => {
+    if (config.initialStepId && !currentStep && messages.length === 1) {
+      goToStep(config.initialStepId);
+    }
+  }, [config.initialStepId, currentStep, messages.length, goToStep]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: input,
-      sender: 'user',
-      timestamp: Date.now(),
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
-    setInput('');
-    
-    // Simulate thinking
+  const executeApiAction = async (actionName: string, payload: any) => {
     setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          text: "I've received your message. I'm processing it for the MVP demo!",
-          sender: 'agent',
-          timestamp: Date.now(),
-        },
-      ]);
-    }, 1500);
-  };
-
-  const handleCreateReport = async () => {
     try {
-      setIsTyping(true);
-      await createReport(config);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          text: "✅ Report has been successfully created and sent to the endpoint.",
-          sender: 'agent',
-          timestamp: Date.now(),
-        },
-      ]);
-    } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          text: `❌ Failed to create report: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          sender: 'agent',
-          timestamp: Date.now(),
-        },
-      ]);
+      const result = await callEndpoint(actionName, config, payload);
+      setLastActionResult(result);
+      addMessage("✅ Action completed successfully!", 'agent');
+    } catch (error: any) {
+      addMessage(`❌ Action failed: ${error.message}`, 'agent');
     } finally {
       setIsTyping(false);
     }
   };
 
+  const handleOptionClick = (option: InteractionOption) => {
+    // 1. Log option choice
+    addMessage(option.label, 'user');
+
+    // 2. Clear current step while processing
+    setCurrentStep(undefined);
+
+    // 3. Handle Actions
+    if (option.triggerAction) {
+      if (option.actionType === 'api') {
+        const payload = { ...option.fixedPayload };
+        if (option.payloadKey && option.value) {
+          payload[option.payloadKey] = option.value;
+        }
+        executeApiAction(option.triggerAction, payload);
+      } else if (option.actionType === 'whatsapp') {
+        window.open(`https://wa.me/${option.externalLink}`, '_blank');
+      } else if (option.actionType === 'link') {
+        window.open(option.externalLink, '_blank');
+      }
+    }
+
+    // 4. Navigate
+    if (option.nextStepId) {
+      setTimeout(() => {
+        const stateUpdate = option.payloadKey && option.value ? { [option.payloadKey]: option.value } : {};
+        goToStep(option.nextStepId!, stateUpdate);
+      }, 500);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+
+    const userInput = input.trim();
+    addMessage(userInput, 'user');
+    setInput('');
+    setIsTyping(true);
+
+    try {
+      // 1. Intent Matching & Extraction
+      if (config.intents) {
+        for (const intent of config.intents) {
+          const matched = intent.keywords.some(k => userInput.toLowerCase().includes(k.toLowerCase()));
+          if (matched) {
+            let extractedData: Record<string, any> = {};
+            if (intent.extractors) {
+              intent.extractors.forEach(ex => {
+                const match = userInput.match(new RegExp(ex.regex, 'i'));
+                if (match && match[1]) {
+                  extractedData[ex.key] = match[1].trim();
+                }
+              });
+            }
+            
+            setIsTyping(false);
+            goToStep(intent.nextStepId, extractedData);
+            return;
+          }
+        }
+      }
+
+      // 2. LLM Fallback
+      if (config.llms && config.llms.length > 0) {
+        // Build combined context
+        const fullContext = context ? `${context}\n${Object.entries(workflowState).map(([k, v]) => `${k}: ${v}`).join('\n')}` : undefined;
+        const llmResponse = await callLLM(userInput, config, lastActionResult, messages, fullContext);
+        setIsTyping(false);
+        addMessage(llmResponse.message, 'agent');
+        
+        if (llmResponse.action) {
+          executeApiAction(llmResponse.action.name, llmResponse.action.payload);
+        }
+      } else {
+        setIsTyping(false);
+        addMessage("I'm sorry, I couldn't find a specific action for that. Can you try rephrasing?", 'agent');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setIsTyping(false);
+      addMessage("I encountered an error while processing your request. Please try again later.", 'agent');
+    }
+  };
+
   return (
     <div className="chat-container glass-morphism-dark agent-neo-font">
-      <div style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
-          <span style={{ color: 'white', fontWeight: 600 }}>Neo Agent</span>
+      <div className="chat-header">
+        <div className="header-info">
+          <div className="status-indicator"></div>
+          <span className="header-title">Neo Agent</span>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
+        <button onClick={onClose} className="close-btn">
           <X size={20} />
         </button>
       </div>
 
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div ref={scrollRef} className="messages-container">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            style={{
-              alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '80%',
-              padding: '10px 14px',
-              borderRadius: '12px',
-              backgroundColor: msg.sender === 'user' ? '#6366f1' : 'rgba(255,255,255,0.05)',
-              color: 'white',
-              fontSize: '14px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            }}
+            className={`message ${msg.sender === 'user' ? 'user-message' : 'agent-message'}`}
           >
             {msg.text}
           </div>
         ))}
         {isTyping && (
-          <div style={{ alignSelf: 'flex-start', color: '#9ca3af', fontSize: '12px' }}>Neo is thinking...</div>
+          <div className="typing-indicator">
+            <Loader2 size={16} className="animate-spin" />
+            <span>Neo is thinking...</span>
+          </div>
         )}
 
-        {/* Action Suggestion */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{ marginTop: 'auto', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}
-        >
-          <span style={{ fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Frequent Actions</span>
-          <button className="action-button" onClick={handleCreateReport} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            <FileText size={16} />
-            Create Report
-            <ChevronRight size={14} />
-          </button>
-        </motion.div>
+        <AnimatePresence>
+          {currentStep?.options && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="options-container"
+            >
+              {currentStep.options.map((opt, i) => (
+                <button 
+                  key={i} 
+                  className="option-pill"
+                  onClick={() => handleOptionClick(opt)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <div style={{ padding: '16px', display: 'flex', gap: '8px' }}>
+      <div className="input-area">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Type a message..."
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '12px',
-            padding: '10px 16px',
-            color: 'white',
-            outline: 'none',
-          }}
+          className="chat-input"
         />
         <button
           onClick={handleSend}
-          style={{
-            backgroundColor: '#6366f1',
-            border: 'none',
-            borderRadius: '12px',
-            width: '40px',
-            height: '40px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            cursor: 'pointer',
-          }}
+          className="send-btn"
+          disabled={isTyping}
         >
           <Send size={18} />
         </button>
