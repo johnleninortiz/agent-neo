@@ -1,11 +1,51 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
 
 :root {
+  /* Base Defaults (Dark) */
   --agent-primary: #6366f1;
   --agent-primary-hover: #4f46e5;
-  --agent-bg-glass-dark: rgba(17, 24, 39, 0.8);
-  --agent-border-glass: rgba(255, 255, 255, 0.1);
+  --agent-bg: rgba(17, 24, 39, 0.8);
+  --agent-text: #ffffff;
+  --agent-text-secondary: #9ca3af;
+  --agent-border: rgba(255, 255, 255, 0.1);
   --agent-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  --agent-msg-bg: rgba(255, 255, 255, 0.05);
+  --agent-input-bg: rgba(255, 255, 255, 0.05);
+  --agent-pill-bg: rgba(99, 102, 241, 0.1);
+  --agent-pill-text: #818cf8;
+  --agent-pill-border: rgba(99, 102, 241, 0.3);
+}
+
+/* Light Theme overrides */
+[data-theme='light'] {
+  --agent-primary: #4f46e5;
+  --agent-primary-hover: #4338ca;
+  --agent-bg: rgba(255, 255, 255, 0.85);
+  --agent-text: #1f2937;
+  --agent-text-secondary: #6b7280;
+  --agent-border: rgba(0, 0, 0, 0.1);
+  --agent-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  --agent-msg-bg: rgba(0, 0, 0, 0.05);
+  --agent-input-bg: rgba(0, 0, 0, 0.05);
+  --agent-pill-bg: rgba(79, 70, 229, 0.1);
+  --agent-pill-text: #4f46e5;
+  --agent-pill-border: rgba(79, 70, 229, 0.2);
+}
+
+/* Glass Theme overrides (Neutral/Blur) */
+[data-theme='glass'] {
+  --agent-primary: #2563eb; /* Blue 600 */
+  --agent-primary-hover: #1d4ed8;
+  --agent-bg: rgba(255, 255, 255, 0.3); /* Ultra transparency */
+  --agent-text: #111827; /* Gray 900 */
+  --agent-text-secondary: #4b5563;
+  --agent-border: rgba(255, 255, 255, 0.3);
+  --agent-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  --agent-msg-bg: rgba(255, 255, 255, 0.4);
+  --agent-input-bg: rgba(255, 255, 255, 0.4);
+  --agent-pill-bg: rgba(37, 99, 235, 0.1);
+  --agent-pill-text: #2563eb;
+  --agent-pill-border: rgba(37, 99, 235, 0.2);
 }
 
 .agent-neo-font {
@@ -13,12 +53,31 @@
 }
 
 .glass-morphism-dark {
-  background: var(--agent-bg-glass-dark);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--agent-border-glass);
+  background: var(--agent-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--agent-border);
   box-shadow: var(--agent-shadow);
   border-radius: 16px;
+  color: var(--agent-text);
+  /* Ensure transparency works nicely */
+}
+
+/* ... existing styles ... */
+
+.send-btn {
+  background-color: var(--agent-primary);
+  border: none;
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px; /* Prevent flexing */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .chat-container {
@@ -31,6 +90,7 @@
   flex-direction: column;
   z-index: 9998;
   overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .chat-header {
@@ -38,7 +98,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--agent-border);
 }
 
 .header-info {
@@ -55,20 +115,97 @@
 }
 
 .header-title {
-  color: white;
+  color: var(--agent-text);
   font-weight: 600;
 }
 
 .close-btn {
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--agent-text-secondary);
   cursor: pointer;
   transition: color 0.2s;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .close-btn:hover {
-  color: white;
+  color: var(--agent-text);
+  background: rgba(255,255,255,0.1);
+}
+
+/* Header Controls Layout */
+.header-controls {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.theme-selector-container {
+  position: relative;
+}
+
+.theme-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--agent-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--agent-border);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  z-index: 10000;
+  transform-origin: top right;
+}
+
+.theme-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+  margin-bottom: 4px;
+  padding-left: 8px;
+  color: var(--agent-text);
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--agent-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.theme-option:hover {
+  background: rgba(125, 125, 125, 0.15);
+}
+
+.theme-color-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.1);
+  flex-shrink: 0;
 }
 
 .messages-container {
@@ -84,25 +221,26 @@
   max-width: 80%;
   padding: 10px 14px;
   border-radius: 12px;
-  color: white;
+  color: var(--agent-text);
   font-size: 14px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Softer shadow */
   white-space: pre-wrap;
 }
 
 .user-message {
   align-self: flex-end;
   background-color: var(--agent-primary);
+  color: white; /* Always white for primary buttons/bubbles */
 }
 
 .agent-message {
   align-self: flex-start;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--agent-msg-bg);
 }
 
 .typing-indicator {
   align-self: flex-start;
-  color: #9ca3af;
+  color: var(--agent-text-secondary);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -117,9 +255,9 @@
 }
 
 .option-pill {
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #818cf8;
+  background: var(--agent-pill-bg);
+  border: 1px solid var(--agent-pill-border);
+  color: var(--agent-pill-text);
   padding: 6px 14px;
   border-radius: 20px;
   font-size: 13px;
@@ -128,8 +266,7 @@
 }
 
 .option-pill:hover {
-  background: rgba(99, 102, 241, 0.2);
-  border-color: rgba(99, 102, 241, 0.5);
+  filter: brightness(1.1);
   transform: translateY(-1px);
 }
 
@@ -141,11 +278,11 @@
 
 .chat-input {
   flex: 1;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: var(--agent-input-bg);
+  border: 1px solid var(--agent-border);
   border-radius: 12px;
   padding: 10px 16px;
-  color: white;
+  color: var(--agent-text);
   outline: none;
   transition: border-color 0.2s;
 }
@@ -160,6 +297,7 @@
   border-radius: 12px;
   width: 40px;
   height: 40px;
+  flex: 0 0 40px; /* Prevent flexing */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -177,6 +315,7 @@
   cursor: not-allowed;
 }
 
+/* ... existing floating-avatar ... */
 .floating-avatar {
   position: fixed;
   bottom: 24px;
@@ -192,6 +331,7 @@
   transform: scale(1.1);
 }
 
+/* ... existing glass-morphism (likely unused but kept) ... */
 .glass-morphism {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
@@ -200,7 +340,7 @@
   box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
   border-radius: 16px;
 }
-
+/* ... existing greeting-bubble ... */
 .greeting-bubble {
   position: fixed !important;
   bottom: 100px !important;
@@ -213,4 +353,41 @@
   font-size: 14px;
   z-index: 9998;
   pointer-events: none;
+}
+
+.actions-suggestion {
+  margin-top: 16px;
+  padding: 0 4px;
+}
+
+.actions-label {
+  display: block;
+  font-size: 12px;
+  color: var(--agent-text-secondary);
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.action-button {
+  width: 100%;
+  background: linear-gradient(90deg, var(--agent-primary) 0%, #a855f7 100%); 
+  /* Note: Gradient might clash with themes, but let's keep it for now or use primary */
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.2s;
+  font-size: 15px;
+}
+
+.action-button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
 }

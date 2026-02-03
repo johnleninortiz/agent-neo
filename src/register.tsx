@@ -10,11 +10,13 @@ export const registerAgentNeo = () => {
     const WebAgent = r2wc(Agent, {
       props: {
         config: 'json',
+        preset: 'string',
         context: 'string',
         user: 'json',
       },
     });
     customElements.define('agent-neo', WebAgent as any);
     console.log('Agent Neo: <agent-neo> custom element registered.');
+    console.log('Version 1.0.0');
   }
 };

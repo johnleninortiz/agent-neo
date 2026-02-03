@@ -1,57 +1,190 @@
-# Agent Neo (React)
+# Agent Neo
 
-Neo Agent is a powerful, configurable AI-driven conversational assistant library for React applications. It provides a seamless way to integrate both guided "deterministic" workflows and advanced LLM-powered multi-turn interactions (supporting Gemini and Claude) into your web projects.
+Agent Neo is a framework-agnostic, AI-driven conversational assistant library. It provides a seamless way to integrate both guided "deterministic" workflows and advanced LLM-powered multi-turn interactions (supporting Gemini and Claude) into your web applications (React, Angular, Vanilla JS).
 
 ## Features
-- **Deterministic Workflows**: Multi-step guides with custom branching logic and `skipIf` conditions.
-- **Variable Extraction**: Automatically extract data from user input using regex-based `extractors`.
-- **LLM Integration**: Built-in support for Gemini (Google) and Claude (Anthropic).
-- **Tool Calling**: Allow the LLM to trigger backend API actions and summarize results.
-- **Context Awareness**: Pass application state and data to the AI for smarter responses.
-- **Resilient Fallbacks**: Automatic retry logic and model fallback chain.
+- **Deterministic Workflows**: Multi-step guides with custom branching logic, `skipIf` conditions, and auto-execution.
+- **Dynamic Personas**: Configurable `agentName` and `systemRole` to adapt the agent's personality (e.g., Chess Grandmaster vs. Financial Expert).
+- **Tool Calling**: Allow the LLM to trigger backend API actions, **open reports**, and summarize results.
+- **Smart Merging**: User configurations intelligently merge with built-in presets (intents and endpoints are additive).
+- **Vanilla & Angular Support**: Built as a Web Component for universal compatibility.
 
 ## Installation
 
 ```bash
-# Add peer dependencies
-npm install framer-motion lucide-react
-
-# Install the agent library
-npm install agent-neo@file:path/to/agent-neo
+npm install agent-neo framer-motion lucide-react
 ```
 
 ## Usage
 
-### 1. Import the Component
+### 1. React Integration
 
 ```tsx
 import Agent from 'agent-neo';
+import 'agent-neo/dist/style.css'; // If styles are separate
 
-const agentConfig = {
+const config = {
+  agentName: 'Support Bot',
+  systemRole: 'a helpful customer support agent.',
   llms: [
-    { provider: 'gemini', model: 'gemini-1.5-flash', apiKey: '...' }
+    { provider: 'gemini', apiKey: '...', model: 'gemini-1.5-flash' }
   ],
   workflow: [
     { 
       id: 'welcome', 
-      message: 'Hello! How can I help?',
+      message: 'Hello {{ userName }}! How can I help?',
       options: [
-        { label: 'Option A', nextStepId: 'step_a' }
+        { label: 'Order Status', nextStepId: 'check_status' }
       ]
+    },
+    {
+      id: 'check_status',
+      triggerAction: 'getOrderStatus', // Auto-executes if logic permits
+      actionType: 'api',
+      nextStepId: 'show_status'
     }
+  ],
+  endpoints: [
+    { name: 'getOrderStatus', url: '/api/orders', method: 'GET', description: 'Fetch orders' }
   ]
 };
 
 function App() {
   return (
     <Agent 
-      config={agentConfig} 
-      user={{ id: 'u1', name: 'John Doe' }}
-      context="Current application state information..."
+      config={config} 
+      user={{ id: 'u1', name: 'John Doe' }} 
+      context="User is on the dashboard."
     />
   );
 }
 ```
 
-### 2. Styling
-The agent uses modern glassmorphism styles and requires `framer-motion` for animations. Ensure your global styles allow for proper positioning (it usually sits in the bottom right).
+### 2. Angular Integration
+
+In your `main.ts` or `app.component.ts`:
+
+```typescript
+import { registerAgentNeo } from 'agent-neo';
+
+// Register the custom element <agent-neo>
+registerAgentNeo();
+```
+
+In your module (`app.module.ts`), add `CUSTOM_ELEMENTS_SCHEMA`:
+
+```typescript
+import { CUSTOM_ELEMENTS_SCHEMA, NgModule } from '@angular/core';
+
+@NgModule({
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  // ...
+})
+export class AppModule { }
+```
+
+In your template (`app.component.html`):
+
+```html
+<agent-neo 
+  [config]="agentConfig" 
+  [user]="user" 
+  preset="reporting">
+</agent-neo>
+```
+
+*(Note: Pass objects as JSON strings if not using Angular bindings, or rely on property binding `[prop]` which Angular handles for custom elements).*
+
+### 3. Vanilla JS Integration
+
+Agent Neo works as a standalone Web Component. The `agent-neo.js` bundle includes React and all necessary dependencies for a zero-config experience. 
+
+#### Recommended: Dev Server with Proxy
+To avoid CORS issues when calling LLM APIs (like Gemini or Claude) from your local environment, we recommend using a dev server with a proxy (e.g., [Vite](https://vitejs.dev/)).
+
+**vite.config.ts**
+```typescript
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  server: {
+    proxy: {
+      '/gemini-api': {
+        target: 'https://generativelanguage.googleapis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/gemini-api/, ''),
+      }
+    }
+  }
+});
+```
+
+**index.html**
+```html
+<agent-neo id="my-agent"></agent-neo>
+
+<script type="module">
+  import { registerAgentNeo } from './dist/agent-neo.js';
+  registerAgentNeo();
+  
+  const agent = document.getElementById('my-agent');
+
+  // Define global handlers (JSON cannot serialize functions)
+  window.myHandler = (payload) => console.log("Action triggered:", payload);
+  
+  // Use property assignment to pass the configuration object
+  agent.config = {
+      agentName: "Agent Neo",
+      llms: [
+        { 
+          provider: 'gemini', 
+          model: 'gemini-1.5-flash', 
+          apiKey: 'YOUR_KEY',
+          baseUrl: '/gemini-api/v1/models' // Uses the local proxy defined above
+        }
+      ],
+      endpoints: [
+          { name: 'notify', handler: 'window.myHandler', description: 'Triggers a handler' }
+      ]
+  }; 
+  
+  agent.user = { id: 'v1', name: 'Visitor' };
+</script>
+```
+
+## Configuration (`AppConfig`)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `agentName` | `string` | The display name of the agent (e.g., "Boris", "Nexus"). |
+| `systemRole` | `string` | The system prompt description defining the agent's persona. |
+| `preset` | `'chess' \| 'reporting' \| 'health'` | Loads pre-configured intents/workflows. User config merges on top. |
+| `endpoints` | `Endpoint[]` | Array of tools the LLM can call. Merged with preset endpoints. |
+| `workflow` | `Step[]` | Deterministic conversation graph. |
+| `llms` | `LLMProvider[]` | Array of keys for Gemini/Claude. |
+
+### Workflow Steps & `skipIf`
+Steps can define `skipIf` logic to bypass screens if data is already present in `workflowState`.
+
+```typescript
+{
+  id: 'ask_name',
+  message: 'What is your name?',
+  inputTarget: 'userName',
+  skipIf: 'workflowState.userName', // Skips if userName is already known
+  nextStepId: 'next'
+}
+```
+
+## Presets
+
+- **Reporting**: Financial expert persona. Includes `ACFR`, `Budget Book` workflows, and `openReport` tool.
+- **Chess**: Grandmaster persona. Analyzing board contexts.
+- **Health**: Vitals tracking assistant.
+
+## Building & Publishing
+
+```bash
+# Build for all targets (React/ESM/Angular)
+bash scripts/publish-all.sh
+```

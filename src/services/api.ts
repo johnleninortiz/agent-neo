@@ -26,6 +26,39 @@ export const callEndpoint = async (
     // Merge payload with template
     const finalPayload = deepMerge({ ...endpoint.payloadTemplate }, payload);
 
+    // 0. Local Handler
+    if (endpoint.handler) {
+        console.log(`Executing local handler for ${endpointName}`, finalPayload);
+        try {
+            let handlerFn = endpoint.handler;
+            // Resolve string handler (e.g. "window.myHandler" or just "myHandler")
+            if (typeof handlerFn === 'string') {
+                // Safe lookup in window
+                if (typeof window !== 'undefined') {
+                    const path = (handlerFn as string).split('.');
+                    let current: any = window;
+                    for (const part of path) {
+                        current = current?.[part];
+                    }
+                    if (typeof current === 'function') {
+                        handlerFn = current;
+                    } else {
+                        throw new Error(`Handler string "${endpoint.handler}" did not resolve to a function.`);
+                    }
+                }
+            }
+
+            if (typeof handlerFn === 'function') {
+                return await handlerFn(finalPayload);
+            } else {
+                // If handler was provided but failed resolution, throw.
+                throw new Error(`Handler for ${endpointName} is not a function.`);
+            }
+        } catch (error: any) {
+            throw new Error(`Local handler for ${endpointName} failed: ${error.message}`);
+        }
+    }
+
     // Interpolate URL params
     let url = endpoint.url;
     for (const key in finalPayload) {
@@ -75,7 +108,10 @@ export const buildSystemPrompt = (userInput: string, config: AppConfig, toolResu
 
     const historyText = history.map(m => `${m.sender.toUpperCase()}: ${m.text}`).join('\n');
 
-    return `You are Neo Agent, a sophisticated AI assistant and Chess Grandmaster.
+    const agentName = config.agentName || 'Neo Agent';
+    const roleDescription = config.systemRole || 'a sophisticated AI assistant';
+
+    return `You are ${agentName}, ${roleDescription}.
     
 AVAILABLE TOOLS (API Endpoints):
 ${toolsDescription}
@@ -89,20 +125,20 @@ ${historyText}
 USER INPUT: "${userInput}"
 
 INSTRUCTIONS:
-1. Analyze the user's request using the provided Context Data (like FEN, Board state, and moves).
-2. If the user asks for chess advice, YOU ARE a Grandmaster. Use the FEN and move history in the context to provide professional strategic recommendations. Do NOT say you cannot analyze the board; you have the data in the context!
-3. Determine if you can answer directly or if you need to call a tool.
-4. If the user asks for an action that matches a tool, you MUST request that action.
-5. You MUST return your response as a valid JSON object. Do not include markdown formatting.
-6. JSON Structure:
+1. Analyze the user's request using the provided Context Data.
+2. Determine if you can answer directly or if you need to call a tool.
+3. If the user asks for an action that matches a tool, you MUST request that action.
+4. You MUST return your response as a valid JSON object. Do not include markdown formatting.
+5. JSON Structure:
 {
-  "message": "Your expert response or chess analysis",
+  "message": "Your expert response",
   "action": {
     "name": "The Tool Name to call",
     "payload": { "key": "value" } 
   }
 }
-7. If no tool is needed, omit the "action" field.
+6. If no tool is needed, omit the "action" field.
+7. IMPORTANT: If the "PREVIOUS TOOL EXECUTION RESULT" contains a "taskId" or status 202, it means the background task has successfully started. In this case, DO NOT call the tool again. Instead, inform the user that the task has been submitted and they can check the activity log.
 `;
 };
 
@@ -131,7 +167,11 @@ const callGemini = async (prompt: string, provider: any): Promise<string> => {
         body: JSON.stringify(body)
     });
 
-    if (!response.ok) throw new Error(`Gemini API error: ${response.statusText}`);
+    if (!response.ok) {
+        const error: any = new Error(`Gemini API error: ${response.statusText}`);
+        error.status = response.status;
+        throw error;
+    }
     const res = await response.json();
     return res.candidates[0]?.content?.parts[0]?.text || "{}";
 };
@@ -153,7 +193,11 @@ const callClaude = async (prompt: string, provider: any): Promise<string> => {
         })
     });
 
-    if (!response.ok) throw new Error(`Claude API error: ${response.statusText}`);
+    if (!response.ok) {
+        const error: any = new Error(`Claude API error: ${response.statusText}`);
+        error.status = response.status;
+        throw error;
+    }
     const res = await response.json();
     return res.content[0]?.text || "{}";
 };

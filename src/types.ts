@@ -5,17 +5,19 @@ export interface EndpointMetadata {
   description: string;
   payloadTemplate?: any;
   withCredentials?: boolean;
+  handler?: (payload: any) => Promise<any> | any;
 }
 
 export interface InteractionOption {
   label: string;
-  value?: string;
+  value?: any; // Allow string, number, etc.
   nextStepId?: string;
   triggerAction?: string;
   actionType?: 'api' | 'whatsapp' | 'link';
   externalLink?: string;
   payloadKey?: string;
   fixedPayload?: any;
+  stateUpdate?: Record<string, any>;
 }
 
 export interface InteractionStep {
@@ -25,6 +27,11 @@ export interface InteractionStep {
   useResultsAsOptions?: boolean;
   inputTarget?: string;
   skipIf?: string; // Expression like "workflowState.reportName"
+  nextStepId?: string;
+  triggerAction?: string;
+  actionType?: 'api' | 'whatsapp' | 'link';
+  payloadKey?: string;
+  fixedPayload?: any;
   dynamicOptionsConfig?: {
     labelKey: string;
     valueKey: string;
@@ -60,6 +67,8 @@ export interface ContextBinding {
 }
 
 export interface AppConfig {
+  agentName?: string;
+  systemRole?: string;
   endpoints: EndpointMetadata[];
   actionLabel?: string;
   initialStepId?: string;

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Neo - Vanilla JS Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        /* Ensure the agent has space */
+        agent-neo {
+            display: block;
+        }
+    </style>
+    <!-- Import Map to resolve React dependencies to CDN -->
+    <!-- React is now bundled in agent-neo.js, no import map needed -->
+</head>
+
+<body>
+    <div class="container">
+        <h1>Agent Neo Fun Demo 🪄</h1>
+        <p>Enter your Gemini API Key to enable the LLM:</p>
+        <div style="margin-bottom: 20px;">
+            <input type="password" id="apiKeyInput" placeholder="AIzaSy..." style="padding: 8px; width: 300px;">
+            <button onclick="updateConfig()" style="padding: 8px;">Update Agent</button>
+        </div>
+        <p>Try asking: <b>"Make the background pink"</b> or <b>"Throw some confetti!"</b></p>
+    </div>
+
+    <!-- Agent Element -->
+    <agent-neo id="my-agent"></agent-neo>
+
+    <!-- Confetti Library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script type="module">
+        import { registerAgentNeo } from './dist/agent-neo.js';
+        registerAgentNeo();
+
+        const agent = document.getElementById('my-agent');
+
+        // --- Fun Handlers ---
+        window.changeBackground = (payload) => {
+            const color = payload.color || 'white';
+            document.body.style.background = color;
+            document.body.style.transition = 'background 0.5s ease';
+            return `Background changed to ${color}`;
+        };
+
+        window.throwConfetti = () => {
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+            return "Confetti launched! 🎉";
+        };
+
+        // --- Initial Config ---
+        const getBaseConfig = (apiKey = '') => ({
+            agentName: "Fun Bot 3000",
+            systemRole: "an entertaining assistant who loves changing colors and throwing parties. you have tools to change the background color and throw confetti.",
+            initialStepId: "welcome",
+            llms: [
+                { name: "Gemini 2.5 Flash", provider: 'gemini', model: 'gemini-2.5-flash', apiKey, baseUrl: '/gemini-api/v1/models' },
+                { name: "Gemini 2.5 Pro", provider: 'gemini', model: 'gemini-2.5-pro', apiKey, baseUrl: '/gemini-api/v1/models' },
+                { name: "Gemini 2.0 Flash", provider: 'gemini', model: 'gemini-2.0-flash', apiKey, baseUrl: '/gemini-api/v1/models' },
+                { name: "Gemini 2.0 Flash 001", provider: 'gemini', model: 'gemini-2.0-flash-001', apiKey, baseUrl: '/gemini-api/v1/models' },
+                { name: "Claude 3.5 Sonnet", provider: 'claude', model: 'claude-3-5-sonnet-20240620', apiKey: 'PASTE_CLAUDE_API_KEY_HERE', baseUrl: '/claude-api/v1/messages' }
+            ],
+            endpoints: [
+                {
+                    name: 'changeBackground',
+                    url: '',
+                    method: 'GET',
+                    description: 'Changes the background color of the page. Payload: { "color": "red" }',
+                    handler: 'window.changeBackground',
+                    payloadTemplate: { color: 'white' }
+                },
+                {
+                    name: 'throwConfetti',
+                    url: '',
+                    method: 'GET',
+                    description: 'Throws confetti on the screen. No params needed.',
+                    handler: 'window.throwConfetti'
+                }
+            ],
+            workflow: [
+                {
+                    id: 'welcome',
+                    message: "Hi! I'm Fun Bot. Give me an API key above, click Update, and then ask me to change the background!",
+                    options: [
+                        { label: 'Throw Confetti', actionType: 'api', triggerAction: 'throwConfetti' }
+                    ]
+                }
+            ]
+        });
+
+        // Initialize with empty key
+        agent.config = getBaseConfig();
+        agent.user = { name: 'Party Person' };
+
+        // Expose update function to global scope for the button
+        window.updateConfig = () => {
+            const key = document.getElementById('apiKeyInput').value;
+            if (!key) {
+                alert("Please enter a key!");
+                return;
+            }
+            const newConfig = getBaseConfig(key);
+            // Update the welcome message to reflect readiness
+            newConfig.workflow[0].message = "I'm ready to party! Ask me to change the background.";
+
+            agent.config = newConfig;
+            alert("Agent updated with API Key! Open the chat.");
+        };
+
+    </script>
+</body>
+
+</html>
