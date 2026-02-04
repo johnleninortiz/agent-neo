@@ -11,10 +11,12 @@ interface AgentProps {
   preset?: string;
   context?: string;
   user?: User;
+  onAction?: (name: string, data: any) => void;
 }
 
-const Agent: React.FC<AgentProps> = ({ config, preset, context, user }) => {
+const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
 
   // Merge preset config with user config
   // User config takes precedence
@@ -45,8 +47,25 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user }) => {
     }
   }, [isOpen]);
 
+  const handleAction = (name: string, data: any) => {
+    // 1. Call prop (for direct React/r2wc function mapping usage)
+    if (onAction) {
+        onAction(name, data);
+    }
+
+    // 2. Dispatch DOM Event (standard bridge for Angular/Vue/Vanilla)
+    if (rootRef.current) {
+        const event = new CustomEvent('onAction', {
+            detail: { name, data },
+            bubbles: true,
+            composed: true // Required to cross Shadow DOM/Web Component boundary
+        });
+        rootRef.current.dispatchEvent(event);
+    }
+  };
+
   return (
-    <>
+    <div ref={rootRef} className="agent-neo-root">
       <style>{styles}</style>
       <Avatar 
         onClick={() => setIsOpen(!isOpen)} 
@@ -61,9 +80,10 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user }) => {
           context={context}
           user={user}
           onStateChange={setAgentState}
+          onAction={handleAction}
         />
       )}
-    </>
+    </div>
   );
 };
 

@@ -47,7 +47,7 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
     <script type="module">
-        import { registerAgentNeo } from './dist/agent-neo.js';
+        import { registerAgentNeo } from '../dist/agent-neo.standalone.js';
         registerAgentNeo();
 
         const agent = document.getElementById('my-agent');
@@ -75,11 +75,8 @@
             systemRole: "an entertaining assistant who loves changing colors and throwing parties. you have tools to change the background color and throw confetti.",
             initialStepId: "welcome",
             llms: [
-                { name: "Gemini 2.5 Flash", provider: 'gemini', model: 'gemini-2.5-flash', apiKey, baseUrl: '/gemini-api/v1/models' },
-                { name: "Gemini 2.5 Pro", provider: 'gemini', model: 'gemini-2.5-pro', apiKey, baseUrl: '/gemini-api/v1/models' },
-                { name: "Gemini 2.0 Flash", provider: 'gemini', model: 'gemini-2.0-flash', apiKey, baseUrl: '/gemini-api/v1/models' },
-                { name: "Gemini 2.0 Flash 001", provider: 'gemini', model: 'gemini-2.0-flash-001', apiKey, baseUrl: '/gemini-api/v1/models' },
-                { name: "Claude 3.5 Sonnet", provider: 'claude', model: 'claude-3-5-sonnet-20240620', apiKey: 'PASTE_CLAUDE_API_KEY_HERE', baseUrl: '/claude-api/v1/messages' }
+                { name: "Claude 3.5 Sonnet", provider: 'claude', model: 'claude-3-5-sonnet-20240620', apiKey: '', baseUrl: '/claude-api/v1/messages' },
+                { name: "Gemini 1.5 Flash", provider: 'gemini', model: 'gemini-1.5-flash', apiKey, baseUrl: '/gemini-api/v1/models' }
             ],
             endpoints: [
                 {

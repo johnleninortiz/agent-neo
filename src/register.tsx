@@ -13,10 +13,11 @@ export const registerAgentNeo = () => {
         preset: 'string',
         context: 'string',
         user: 'json',
+        onAction: 'function',
       },
     });
     customElements.define('agent-neo', WebAgent as any);
     console.log('Agent Neo: <agent-neo> custom element registered.');
-    console.log('Version 1.0.0');
+    console.log('Version 1.0.2');
   }
 };

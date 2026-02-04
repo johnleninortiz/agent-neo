@@ -59,6 +59,12 @@ export const callEndpoint = async (
         }
     }
 
+    // 1. Virtual Endpoint (No URL)
+    if (!endpoint.url) {
+        console.log(`Executing virtual endpoint for ${endpointName}`, finalPayload);
+        return finalPayload;
+    }
+
     // Interpolate URL params
     let url = endpoint.url;
     for (const key in finalPayload) {
@@ -103,7 +109,10 @@ export const buildSystemPrompt = (userInput: string, config: AppConfig, toolResu
     }
 
     if (toolResult) {
-        contextText += `\n\nPREVIOUS TOOL EXECUTION RESULT:\n${JSON.stringify(toolResult, null, 2)}\n(Use this result to answer the user's question directly. Do not call the same tool again unless requested.)`;
+        contextText += `\n\n[CRITICAL] PREVIOUS TOOL EXECUTION RESULT:\n${JSON.stringify(toolResult, null, 2)}\n
+        The action requested in the last turn HAS ALREADY BEEN COMPLETED. 
+        Your task now is to SUMMARIZE the result for the user. 
+        DO NOT call the same tool again in the "action" field unless the user explicitly asked for a secondary operation.`;
     }
 
     const historyText = history.map(m => `${m.sender.toUpperCase()}: ${m.text}`).join('\n');
@@ -125,9 +134,9 @@ ${historyText}
 USER INPUT: "${userInput}"
 
 INSTRUCTIONS:
-1. Analyze the user's request using the provided Context Data.
-2. Determine if you can answer directly or if you need to call a tool.
-3. If the user asks for an action that matches a tool, you MUST request that action.
+1. Analyze the user's request using the provided Context Data and tool results.
+2. If toolResult is present above, the action is ALREADY DONE. Summarize it naturally.
+3. If no toolResult is present and the user asks for an action that matches a tool, you MUST request that action.
 4. You MUST return your response as a valid JSON object. Do not include markdown formatting.
 5. JSON Structure:
 {
@@ -137,9 +146,9 @@ INSTRUCTIONS:
     "payload": { "key": "value" } 
   }
 }
-6. If no tool is needed, omit the "action" field.
-7. IMPORTANT: If the "PREVIOUS TOOL EXECUTION RESULT" contains a "taskId" or status 202, it means the background task has successfully started. In this case, DO NOT call the tool again. Instead, inform the user that the task has been submitted and they can check the activity log.
-`;
+6. If no NEW tool is needed, omit the "action" field.
+7. Be concise but helpful.
+8. IMPORTANT: If the "PREVIOUS TOOL EXECUTION RESULT" indicates success, do not blindly repeat the same action unless progressive logic (like "twice") requires another step.`;
 };
 
 export const parseLLMResponse = (raw: string): { message: string, action?: any } => {
@@ -153,9 +162,15 @@ export const parseLLMResponse = (raw: string): { message: string, action?: any }
 };
 
 const callGemini = async (prompt: string, provider: any): Promise<string> => {
+    const apiKey = provider.apiKey || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+
+    if (!apiKey && !provider.baseUrl) {
+        throw new Error('Gemini API key is missing. Please provide it in the config or set VITE_GEMINI_API_KEY.');
+    }
+
     let url = provider.baseUrl
-        ? `${provider.baseUrl}/${provider.model || 'gemini-1.5-flash'}:generateContent?key=${provider.apiKey}`
-        : `https://generativelanguage.googleapis.com/v1beta/models/${provider.model || 'gemini-1.5-flash'}:generateContent?key=${provider.apiKey}`;
+        ? `${provider.baseUrl}/${provider.model || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`
+        : `https://generativelanguage.googleapis.com/v1beta/models/${provider.model || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`;
 
     const body = {
         contents: [{ parts: [{ text: prompt }] }]
@@ -178,16 +193,22 @@ const callGemini = async (prompt: string, provider: any): Promise<string> => {
 
 const callClaude = async (prompt: string, provider: any): Promise<string> => {
     const url = provider.baseUrl || 'https://api.anthropic.com/v1/messages';
+    const apiKey = provider.apiKey || (import.meta as any).env?.VITE_CLAUDE_API_KEY;
+
+    if (!apiKey) {
+        throw new Error('Claude API key is missing. Please provide it in the config or set VITE_CLAUDE_API_KEY.');
+    }
 
     const response = await fetch(url, {
         method: 'POST',
         headers: {
-            'x-api-key': provider.apiKey,
+            'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
             'content-type': 'application/json'
         },
         body: JSON.stringify({
-            model: provider.model || 'claude-3-5-sonnet-20240620',
+            model: provider.model || (import.meta as any).env?.VITE_CLAUDE_MODEL || 'claude-3-5-sonnet-20240620',
             max_tokens: 1024,
             messages: [{ role: 'user', content: prompt }]
         })

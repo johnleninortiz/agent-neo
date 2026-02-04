@@ -2,6 +2,39 @@
 
 Agent Neo is a framework-agnostic, AI-driven conversational assistant library. It provides a seamless way to integrate both guided "deterministic" workflows and advanced LLM-powered multi-turn interactions (supporting Gemini and Claude) into your web applications (React, Angular, Vanilla JS).
 
+## 🔐 Security & API Keys
+
+To avoid hardcoding private keys in your source code, Agent Neo supports environment-variable-based configuration.
+
+### Development (Local)
+
+1. Create a `.env.local` file in the root of your project (this file is ignored by git).
+2. Add your keys using the `VITE_` prefix:
+   ```env
+   VITE_GEMINI_API_KEY=your_key_here
+   VITE_CLAUDE_API_KEY=your_key_here
+   ```
+3. The agent will automatically use these fallbacks if no `apiKey` is provided in the `config` object.
+
+### Production (Recommended)
+
+**NEVER expose your private API keys in a production client-side bundle.** Even with environment variables, Vite embeds these values in the JavaScript sent to the browser.
+
+For production, we recommend using a **Backend Proxy**:
+1. Create a server-side endpoint in your host application (e.g., `/api/llm/gemini`).
+2. Set the `baseUrl` in your `llms` configuration to point to your proxy.
+3. Your server then attaches the private key and forwards the request to the LLM provider.
+
+```json
+{
+  "provider": "gemini",
+  "baseUrl": "https://your-app.com/api/llm/gemini",
+  "apiKey": "" // Leave empty, handled by server
+}
+```
+
+---
+
 ## Features
 - **Deterministic Workflows**: Multi-step guides with custom branching logic, `skipIf` conditions, and auto-execution.
 - **Dynamic Personas**: Configurable `agentName` and `systemRole` to adapt the agent's personality (e.g., Chess Grandmaster vs. Financial Expert).

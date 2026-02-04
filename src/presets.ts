@@ -9,7 +9,8 @@ export const presets: Record<string, Partial<AppConfig>> = {
             { keywords: ['ACFR', 'comprehensive', 'financial'], nextStepId: 'acfr_confirm' },
             { keywords: ['Budget', 'Book', 'budgetary'], nextStepId: 'budget_confirm' },
             { keywords: ['templates', 'themes', 'show me', 'list'], nextStepId: 'help' },
-            { keywords: ['open', 'last', 'report'], nextStepId: 'open_last_report_flow' }
+            { keywords: ['open', 'last', 'report'], nextStepId: 'open_last_report_flow' },
+            { keywords: ['permissions', 'Please give edit permissions for Guilad', 'edit permissions'], nextStepId: 'update_permissions_demo' }
         ],
         endpoints: [
             {
@@ -17,6 +18,13 @@ export const presets: Record<string, Partial<AppConfig>> = {
                 url: '', // Client-side handled
                 method: 'GET',
                 description: 'Usage: Call this to OPEN a report given its ID. Useful when user asks to open/view a report.',
+                payloadTemplate: { id: '' }
+            },
+            {
+                name: 'manageAccess',
+                url: '', // Client-side handled
+                method: 'GET',
+                description: 'Usage: Call this to manage access/permissions for a report.',
                 payloadTemplate: { id: '' }
             }
         ],
@@ -176,7 +184,8 @@ export const presets: Record<string, Partial<AppConfig>> = {
                 id: 'done',
                 message: "✅ Perfect! Your report request has been sent.",
                 options: [
-                    { label: 'Open Report', actionType: 'link', externalLink: '/reporting/{{ result.id }}' }
+                    { label: 'Open Report', triggerAction: 'openReport', actionType: 'api', value: "{{result.id}}", payloadKey: 'id' },
+                    { label: 'Manage Access/Permissions', triggerAction: 'manageAccess', actionType: 'api', value: "{{result.id}}", payloadKey: 'id' }
                 ]
             },
             {
@@ -194,9 +203,16 @@ export const presets: Record<string, Partial<AppConfig>> = {
                 id: 'display_last_report',
                 message: "Here is the last report I found: '{{result[0].name}}'.",
                 options: [
-                    { label: "Open Report", actionType: 'link', externalLink: '/reporting/{{result[0].id}}' },
+                    { label: "Open Report", triggerAction: 'openReport', actionType: 'api', value: "{{result[0].id}}", payloadKey: 'id' },
                     { label: "Check Activity Log", actionType: 'link', externalLink: '/settings/activity-log' }
                 ]
+            },
+            {
+                id: 'update_permissions_demo',
+                message: "Report permissions have been updated for the user gholender@cleargov.com",
+                triggerAction: 'manageAccess',
+                actionType: 'api',
+                fixedPayload: { userEmail: 'gholender@cleargov.com' }
             }
         ]
     },

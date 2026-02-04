@@ -145,6 +145,6 @@ EOF
 
 # Copy React Artifacts
 mkdir -p $DIST_DIR/vendor
-cp dist/agent-neo.js $DIST_DIR/vendor/agent-neo.js
+cp dist/agent-neo.standalone.js $DIST_DIR/vendor/agent-neo.js
 
 echo "✅ Angular Wrapper built in $DIST_DIR"

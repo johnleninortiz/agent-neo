@@ -72,9 +72,10 @@
   width: 40px;
   height: 40px;
   flex: 0 0 40px; /* Prevent flexing */
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
   color: white;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -291,20 +292,7 @@
   border-color: var(--agent-primary);
 }
 
-.send-btn {
-  background-color: var(--agent-primary);
-  border: none;
-  border-radius: 12px;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px; /* Prevent flexing */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
+
 
 .send-btn:hover {
   background-color: var(--agent-primary-hover);
