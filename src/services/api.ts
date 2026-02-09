@@ -250,11 +250,9 @@ export const callLLM = async (
             return parseLLMResponse(rawResponse);
         } catch (error: any) {
             console.error(`Provider ${provider.provider} failed:`, error);
-            if (error.status === 429 || error.status >= 500) {
-                lastError = error;
-                continue;
-            }
-            throw error;
+            console.warn(`Provider ${provider.provider} failed:`, error);
+            lastError = error;
+            continue;
         }
     }
 

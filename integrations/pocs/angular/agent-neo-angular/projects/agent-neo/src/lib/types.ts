@@ -10,7 +10,7 @@ export interface EndpointMetadata {
 
 export interface InteractionOption {
   label: string;
-  value?: any; // Allow string, number, etc.
+  value?: any;
   nextStepId?: string;
   triggerAction?: string;
   actionType?: 'api' | 'whatsapp' | 'link';
@@ -26,7 +26,7 @@ export interface InteractionStep {
   options?: InteractionOption[];
   useResultsAsOptions?: boolean;
   inputTarget?: string;
-  skipIf?: string; // Expression like "workflowState.reportName"
+  skipIf?: string;
   nextStepId?: string;
   triggerAction?: string;
   actionType?: 'api' | 'whatsapp' | 'link';
@@ -41,7 +41,6 @@ export interface InteractionStep {
     payloadKey?: string;
     fixedPayload?: any;
   };
-  delay?: number; // Added delay property in ms
 }
 
 export interface Intent {
@@ -78,7 +77,6 @@ export interface AppConfig {
   llms?: LLMProvider[];
   contextBindings?: ContextBinding[];
   workflow?: InteractionStep[];
-  showStopButton?: boolean;
 }
 
 export interface User {

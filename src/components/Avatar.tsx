@@ -7,9 +7,10 @@ interface AvatarProps {
   isOpen: boolean;
   userName?: string;
   state?: 'idle' | 'active' | 'thinking';
+  isMaximized?: boolean;
 }
 
-const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state }) => {
+const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state, isMaximized }) => {
   const [showGreeting, setShowGreeting] = useState(false);
 
   useEffect(() => {
@@ -26,7 +27,7 @@ const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state }) => 
   return (
     <div className="agent-neo-font">
   <AnimatePresence>
-    {showGreeting && !isOpen && (
+    {showGreeting && !isOpen && !isMaximized && (
       <motion.div
         initial={{ opacity: 0, x: 20, scale: 0.8 }}
         animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -39,7 +40,7 @@ const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state }) => 
   </AnimatePresence>
 
   <motion.div
-    className="floating-avatar glass-morphism"
+    className={`floating-avatar glass-morphism ${isMaximized ? 'maximized' : ''}`}
     onClick={onClick}
     whileHover={{ scale: 1.1 }}
     whileTap={{ scale: 0.9 }}
@@ -48,10 +49,10 @@ const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state }) => 
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: '50%',
-      width: '50px',  // Adjust size as needed
-      height: '50px', // Adjust size as needed
+      width: isMaximized ? '80px' : '50px',
+      height: isMaximized ? '80px' : '50px',
       overflow: 'hidden',
-      background: 'transparent', // Optional: remove gradient since Nexus has its own colors
+      background: 'transparent',
     }}
   >
       <AnimatedNexus state={state} />

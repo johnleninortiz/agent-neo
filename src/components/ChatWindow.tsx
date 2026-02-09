@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Palette } from 'lucide-react';
+import { Palette, Maximize, Minimize, Square } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { AppConfig, Message, User, InteractionStep, InteractionOption } from '../types';
 import { callLLM, callEndpoint } from '../services/api';
- 
+
+// ... (keep getSimilarity helper) ...
+
 // Helper for string similarity (Levenshtein distance based)
 const getSimilarity = (s1: string, s2: string): number => {
     const longer = s1.length < s2.length ? s2 : s1;
@@ -41,9 +43,11 @@ interface ChatWindowProps {
   user?: User;
   onStateChange?: (state: 'idle' | 'active' | 'thinking') => void;
   onAction?: (name: string, data: any) => void;
+  isMaximized?: boolean;
+  onToggleMaximize?: () => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user, onStateChange, onAction }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user, onStateChange, onAction, isMaximized, onToggleMaximize }) => {
   const initializedRef = useRef(false);
 
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -60,6 +64,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
   });
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isAutoRunning, setIsAutoRunning] = useState(false);
   
   // Sync state with parent
   useEffect(() => {
@@ -90,6 +95,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
   const stepRef = useRef<InteractionStep | undefined>(undefined);
   const lastResultRef = useRef<any>(null);
   const lastAutoExecutedStepIdRef = useRef<string | null>(null);
+  const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopSignalRef = useRef(false); // To interrupt api loops
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -149,7 +156,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
     current[keys[keys.length - 1]] = value;
   };
 
-  const executeApiAction = async (actionName: string, value?: any, payloadKey?: string, fixedPayload?: any, originalInput?: string, triggeredActions: string[] = []) => {
+  const executeApiAction = useCallback(async (actionName: string, value?: any, payloadKey?: string, fixedPayload?: any, originalInput?: string, triggeredActions: string[] = []) => {
+    // Check for stop signal
+    if (stopSignalRef.current) {
+        console.warn('Execution stopped by user.');
+        return null;
+    }
+
     // Recursion protection: Don't trigger the same action twice in a single LLM response chain
     if (triggeredActions.includes(actionName)) {
         console.warn(`Tool recursion detected for ${actionName}. Skipping.`);
@@ -228,15 +241,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
       } else {
         addMessage("✅ Action completed successfully!", 'agent');
       }
+      
+      return result; // Return result for caller to use
 
     } catch (error: any) {
       addMessage(`❌ Action failed: ${error.message}`, 'agent');
+      return null;
     } finally {
       setIsTyping(false);
     }
-  };
+  }, [config, messages, workflowState, addMessage, interpolate, onAction, context]);
 
   const goToStep = useCallback((stepId: string, stateUpdate: Record<string, any> = {}) => {
+    // 1. Manage Stop Signal Lifecycle based on Step ID
+    if (stepId === 'stop_flow') {
+        stopSignalRef.current = true;
+        setIsAutoRunning(false);
+    } else if (stepId === 'win_start' || stepId === 'assist_start') {
+        // Reset signal when starting a new automation flow
+        stopSignalRef.current = false;
+    }
+
     const updatedState = { ...workflowState, ...stateUpdate };
     setWorkflowState(updatedState);
 
@@ -291,6 +316,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
           }));
       }
 
+
       setCurrentStep(stepClone);
       stepRef.current = stepClone;
       setShowOptions(true);
@@ -308,8 +334,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
 
   // Auto-execute steps that have a triggerAction but no inputTarget (e.g. middleware steps)
   useEffect(() => {
-      if (currentStep && currentStep.triggerAction && !currentStep.inputTarget && currentStep.actionType === 'api') {
-          // Prevent infinite loop if already executed for this step ID
+      if (!currentStep) return;
+
+      // If we moved to a different step, reset the auto-execution blocker.
+      // this allows A -> B -> A flows to re-trigger automated actions.
+      if (lastAutoExecutedStepIdRef.current !== currentStep.id) {
+          lastAutoExecutedStepIdRef.current = null;
+      }
+
+      // Case A: Step has an action to execute
+      if (currentStep.triggerAction && !currentStep.inputTarget && currentStep.actionType === 'api') {
+          // Prevent infinite loop if already executed for this step ID in this visit
           if (lastAutoExecutedStepIdRef.current === currentStep.id) {
               return;
           }
@@ -317,14 +352,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
           lastAutoExecutedStepIdRef.current = currentStep.id;
 
           const execute = async () => {
-              await executeApiAction(currentStep.triggerAction!, undefined, currentStep.payloadKey, currentStep.fixedPayload);
-              if (currentStep.nextStepId) {
-                  setTimeout(() => {
-                      goToStep(currentStep.nextStepId!);
-                  }, 500);
+              // Check stop signal before starting delay
+              if (stopSignalRef.current) return;
+
+              if (currentStep.delay) {
+                  await new Promise(resolve => setTimeout(resolve, currentStep.delay));
+              }
+              
+              // Check stop signal after delay
+              if (stopSignalRef.current) return;
+
+              const result = await executeApiAction(currentStep.triggerAction!, undefined, currentStep.payloadKey, currentStep.fixedPayload);
+              
+              // Check stop signal after execution (CRITICAL fix for race condition)
+              if (stopSignalRef.current) {
+                  console.log('Stop signal detected after execution. Aborting auto-advance.');
+                  return;
+              }
+
+              // Check if result mandates a next step override
+              if (result && result.nextStepId) {
+                  scheduleAutoAdvance(result.nextStepId, 500);
+              } else if (currentStep.nextStepId) {
+                  scheduleAutoAdvance(currentStep.nextStepId, 500);
               }
           };
           execute();
+      } 
+      // Case B: Step has NO action, but HAS a next step (informational/delay step)
+      else if (!currentStep.triggerAction && !currentStep.inputTarget && currentStep.nextStepId && (!currentStep.options || currentStep.options.length === 0)) {
+           // Prevent infinite loop
+           if (lastAutoExecutedStepIdRef.current === currentStep.id) {
+              return;
+           }
+           lastAutoExecutedStepIdRef.current = currentStep.id;
+
+           const delay = currentStep.delay || 1000; // Default to 1s if not specified
+           
+           // Check stop signal before scheduling
+           if (stopSignalRef.current) return;
+           
+           scheduleAutoAdvance(currentStep.nextStepId, delay);
       }
   }, [currentStep, executeApiAction, goToStep]);
 
@@ -332,9 +400,65 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isTyping, showOptions]);
+  }, [messages, isTyping, showOptions, isMaximized]);
+
+  // const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // REMOVED DUPLICATE
+
+  const cancelAutoAdvance = () => {
+      if (autoAdvanceTimerRef.current) {
+          clearTimeout(autoAdvanceTimerRef.current);
+          autoAdvanceTimerRef.current = null;
+      }
+      setIsAutoRunning(false);
+  };
+
+  const scheduleAutoAdvance = (stepId: string, delay: number = 500, stateUpdate: Record<string, any> = {}) => {
+      // If we are stopped, do NOT schedule anything
+      if (stopSignalRef.current) {
+          console.log('Attempted to schedule auto-advance while stopped. Ignoring.');
+          return;
+      }
+
+      cancelAutoAdvance(); // Clears timer but we set running to true immediately after
+      setIsAutoRunning(true);
+      autoAdvanceTimerRef.current = setTimeout(() => {
+          if (stopSignalRef.current) return; // Final fallback check
+          goToStep(stepId, stateUpdate);
+      }, delay);
+  };
+  
+  const handleStop = async () => {
+      console.log('Stopping auto-play...');
+      
+      // 1. Set signal FIRST to block any pending execution
+      stopSignalRef.current = true;
+      
+      // 2. Kill any timers
+      cancelAutoAdvance();
+      
+      // 3. Update UI State
+      setIsAutoRunning(false);
+      setIsTyping(false);
+      
+      // 4. Simulate user typing "stop" to trigger the generic stop intent logic
+      // This creates a natural flow where the agent responds to the "stop" command
+      await handleSend("stop"); 
+  };
 
   const handleOptionClick = async (option: InteractionOption, skipMessage = false) => {
+    cancelAutoAdvance(); // User interacted, stop auto-pilot
+    // Ensure stop signal is reset if user manually interacts? 
+    stopSignalRef.current = false;
+    
+    const current = stepRef.current || currentStep;
+    
+    // Special Case: If the current step has an inputTarget, treat options as quick-reply inputs
+    if (current?.inputTarget) {
+        const val = option.value !== undefined ? option.value : option.label;
+        await handleSend(val);
+        return;
+    }
+
     // 1. Log option choice
     if (!skipMessage) {
         addMessage(option.label, 'user');
@@ -354,18 +478,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
 
     // 4. Navigate
     if (option.nextStepId) {
-       // Wait slightly for UI/UX but after API is confirmed done
-       setTimeout(() => {
-        const stateUpdate = {
-             ...(option.payloadKey && option.value ? { [option.payloadKey]: option.value } : {}),
-             ...(option.stateUpdate || {})
-        };
-        goToStep(option.nextStepId!, stateUpdate);
-      }, 400); // Reduced delay
+        const stateUpdate: Record<string, any> = {};
+        
+        // Handle payloadKey/value interpolation
+        if (option.payloadKey && option.value !== undefined) {
+            stateUpdate[option.payloadKey] = typeof option.value === 'string' ? interpolate(option.value, workflowState) : option.value;
+        }
+
+        // Handle explicit stateUpdate interpolation
+        if (option.stateUpdate) {
+            for (const key in option.stateUpdate) {
+                const val = option.stateUpdate[key];
+                stateUpdate[key] = typeof val === 'string' ? interpolate(val, workflowState) : val;
+            }
+        }
+
+        scheduleAutoAdvance(option.nextStepId, 400, stateUpdate);
     }
   };
 
   const handleQuickAction = () => {
+      cancelAutoAdvance();
       // Just a default 'Create Report' action for now or derived from config
       // In Angular it was: this.api.createReport(this.config) which seems hardcoded to a service method
       // We will assume it tries to find an endpoint named 'createReport' or similar
@@ -379,33 +512,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
   };
   
   const handleSend = async (manualInput?: string) => {
+    cancelAutoAdvance(); // User interacted, stop auto-pilot
     const textToSend = manualInput || input;
     if (!textToSend.trim()) return;
 
     const userInput = textToSend.trim();
+    
+    // Always log the user message (whether typed or clicked)
+    addMessage(userInput, 'user');
+    
     if (!manualInput) {
-        addMessage(userInput, 'user');
         setInput('');
     }
     
     setIsTyping(true);
 
     try {
+      const current = stepRef.current || currentStep;
+
       // 0. Input Capture (Deterministic Flow)
-      if (currentStep && currentStep.inputTarget) {
+      console.log('Checking input capture:', { 
+          currentStepId: current?.id, 
+          inputTarget: current?.inputTarget, 
+          userInput 
+      });
+
+      if (current && current.inputTarget) {
           // Save input to workflow state
-          const newState = { ...workflowState, [currentStep.inputTarget]: userInput };
+          const newState = { ...workflowState, [current.inputTarget]: userInput };
           setWorkflowState(newState);
 
+          console.log('Input saved, checking actions...', current.triggerAction);
+
           // If step has an action, execute it
-          if (currentStep.triggerAction && currentStep.actionType === 'api') {
+          if (current.triggerAction && current.actionType === 'api') {
               // Use the captured input as value if payloadKey matches inputTarget or is separate
               const value = userInput;
               await executeApiAction(
-                  currentStep.triggerAction, 
+                  current.triggerAction, 
                   value, 
-                  currentStep.payloadKey, 
-                  currentStep.fixedPayload, 
+                  current.payloadKey, 
+                  current.fixedPayload, 
                   undefined // No LLM feedback loop for deterministic steps typically
               );
           }
@@ -413,8 +560,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
           setIsTyping(false);
 
           // Navigate to next step
-          if (currentStep.nextStepId) {
-             goToStep(currentStep.nextStepId, { [currentStep.inputTarget]: userInput });
+          if (current.nextStepId) {
+             goToStep(current.nextStepId, { [current.inputTarget]: userInput });
           }
           return;
       }
@@ -423,8 +570,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
       const normalizedInput = userInput.toLowerCase();
 
       // Check available options first (context-aware)
-      if (currentStep?.options) {
-        for (const option of currentStep.options) {
+      if (current?.options) {
+        for (const option of current.options) {
             const similarity = getSimilarity(normalizedInput, option.label.toLowerCase());
             if (similarity >= 0.95) {
                 setIsTyping(false);
@@ -438,6 +585,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         let bestStrictMatch = { intent: null as any, score: 0 };
         
         for (const intent of config.intents) {
+           // Regex Priority Check
+           if (intent.extractors && intent.extractors.length > 0) {
+               const allMatch = intent.extractors.every((ex: any) => new RegExp(ex.regex, 'i').test(userInput));
+               if (allMatch) {
+                   bestStrictMatch = { intent, score: 1.1 }; // Priority over keywords
+                   break;
+               }
+           }
+
            for (const keyword of intent.keywords) {
                const similarity = getSimilarity(normalizedInput, keyword.toLowerCase());
                if (similarity >= 0.95 && similarity > bestStrictMatch.score) {
@@ -523,14 +679,39 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
     }
   };
 
+
   return (
-    <div className="chat-container glass-morphism-dark agent-neo-font" data-theme={theme}>
+    <div className={`chat-container glass-morphism-dark agent-neo-font ${isMaximized ? 'maximized' : ''}`} data-theme={theme}>
       <div className="chat-header">
         <div className="header-info">
           <div className="status-indicator"></div>
           <span className="header-title">{config.agentName || 'Neo Agent'}</span>
         </div>
         <div className="header-controls">
+            
+            {/* STOP BUTTON - Only visible when busy/auto-running AND explicitly enabled */}
+            {(isAutoRunning || isTyping) && config.showStopButton && (
+                <button 
+                  onClick={handleStop}
+                  className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                  title="Stop Auto-Play / Cancel"
+                >
+                  <Square size={18} fill="currentColor" />
+                </button>
+            )}
+
+            {/* Maximize Button */}
+            {onToggleMaximize && (
+                <button 
+                    onClick={onToggleMaximize}
+                    className="close-btn"
+                    title={isMaximized ? "Restore" : "Maximize"}
+                    style={{ marginRight: '4px' }}
+                >
+                    {isMaximized ? <Minimize size={18} /> : <Maximize size={18} />}
+                </button>
+            )}
+
             {/* Theme Selector */}
             <div className="theme-selector-container">
                 <button 
@@ -625,6 +806,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         </div>
 
       </div>
+
 
       <div className="input-area">
         <input

@@ -37,6 +37,7 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
   }, [config, preset]);
 
   const [agentState, setAgentState] = useState<'idle' | 'active' | 'thinking'>('idle');
+  const [isMaximized, setIsMaximized] = useState(false);
 
   // Sync open state with agent state
   useEffect(() => {
@@ -72,6 +73,7 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
         isOpen={isOpen} 
         userName={user?.name}
         state={agentState} 
+        isMaximized={isMaximized}
       />
       {isOpen && (
         <ChatWindow 
@@ -81,6 +83,8 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
           user={user}
           onStateChange={setAgentState}
           onAction={handleAction}
+          isMaximized={isMaximized}
+          onToggleMaximize={() => setIsMaximized(!isMaximized)}
         />
       )}
     </div>

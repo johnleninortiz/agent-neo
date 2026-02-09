@@ -1,0 +1,31 @@
+{
+  "name": "agent-neo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/agent-neo.umd.cjs",
+  "module": "./dist/agent-neo.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/agent-neo.js",
+      "require": "./dist/agent-neo.umd.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly --outDir dist"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.1.2",
+    "svelte-preprocess": "^6.0.2",
+    "svelte": "^4.2.18",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}

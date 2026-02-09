@@ -195,6 +195,7 @@ export default defineConfig({
 | `endpoints` | `Endpoint[]` | Array of tools the LLM can call. Merged with preset endpoints. |
 | `workflow` | `Step[]` | Deterministic conversation graph. |
 | `llms` | `LLMProvider[]` | Array of keys for Gemini/Claude. |
+| `showStopButton` | `boolean` | (Optional) Set to `true` to show the stop button during active states. Default: `false`. |
 
 ### Workflow Steps & `skipIf`
 Steps can define `skipIf` logic to bypass screens if data is already present in `workflowState`.

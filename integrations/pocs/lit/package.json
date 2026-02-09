@@ -1,0 +1,33 @@
+{
+  "name": "agent-neo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/agent-neo.umd.cjs",
+  "module": "./dist/agent-neo.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/agent-neo.js",
+      "require": "./dist/agent-neo.umd.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vite-plugin-dts": "^4.2.3"
+  }
+}

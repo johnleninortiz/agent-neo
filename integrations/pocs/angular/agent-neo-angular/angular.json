@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "agent-neo": {
+      "projectType": "library",
+      "root": "projects/agent-neo",
+      "sourceRoot": "projects/agent-neo/src",
+      "prefix": "agent",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "options": {
+            "project": "projects/agent-neo/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/agent-neo/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/agent-neo/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular-devkit/build-angular:karma",
+          "options": {
+            "main": "projects/agent-neo/src/test.ts",
+            "tsConfig": "projects/agent-neo/tsconfig.spec.json",
+            "karmaConfig": "projects/agent-neo/karma.conf.js"
+          }
+        }
+      }
+    }
+  },
+  "cli": {
+    "analytics": false
+  }
+}

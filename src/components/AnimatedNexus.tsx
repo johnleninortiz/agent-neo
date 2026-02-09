@@ -79,12 +79,12 @@ export default function AnimatedNexus({ state = 'idle' }: AnimatedNexusProps) {
                     strokeLinejoin="round"
                     initial={{ rotate: 0, scale: 1 }}
                     animate={{
-                        rotate: state === 'thinking' ? (hex.reverse ? 360 : -360) : 0,
+                        rotate: (state === 'thinking' || state === 'idle') ? (hex.reverse ? 360 : -360) : 0,
                         scale: state === 'thinking' ? [1, 1.02, 0.98, 1] : 1,
                     }}
                     transition={{
                         rotate: {
-                            duration: hex.duration,
+                            duration: state === 'idle' ? hex.duration * 4 : hex.duration, // Very slow for idle
                             repeat: Infinity,
                             ease: "linear",
                         },

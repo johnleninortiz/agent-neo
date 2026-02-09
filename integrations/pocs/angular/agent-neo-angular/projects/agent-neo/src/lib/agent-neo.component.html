@@ -1,0 +1,114 @@
+<div class="agent-neo-root">
+  <div *ngIf="showGreeting && !isOpen" class="greeting-bubble glass-morphism show">
+    Hey hey, {{ user?.name || 'there' }}! I'm your assistant. How can I help you today?
+  </div>
+
+  <div class="floating-avatar glass-morphism" (click)="toggleOpen()">
+    <div class="nexus-wrap" [class.thinking]="agentState === 'thinking'">
+      <svg viewBox="0 0 200 200" class="nexus-svg">
+        <ng-container *ngFor="let hex of hexagons">
+          <path class="nexus-hex" [class.thinking]="agentState === 'thinking'" [class.cw]="hex.reverse"
+            [class.ccw]="!hex.reverse" [attr.d]="getHexPath(hex.size)" fill="none"
+            [attr.stroke]="agentState === 'idle' ? '#9CA3AF' : hex.id % 2 === 0 ? '#06B6D4' : '#3B82F6'"
+            [attr.stroke-width]="agentState === 'idle' ? 1.2 : 1.6" stroke-linecap="round" stroke-linejoin="round"
+            vector-effect="non-scaling-stroke" [style.--spin]="hex.duration + 's'"
+            [style.--delay]="(hex.id * 0.05) + 's'"></path>
+        </ng-container>
+      </svg>
+    </div>
+  </div>
+
+  <div *ngIf="isOpen" class="chat-container glass-morphism-dark" [attr.data-theme]="theme">
+    <div class="chat-header">
+      <div class="header-info">
+        <div class="status-indicator"></div>
+        <span class="header-title">{{ finalConfig.agentName || 'Neo Agent' }}</span>
+      </div>
+      <div class="header-controls">
+        <div class="theme-selector-container">
+          <button class="close-btn" title="Change Theme" (click)="toggleThemeMenu()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="13.5" cy="6.5" r=".5"></circle>
+              <circle cx="17.5" cy="10.5" r=".5"></circle>
+              <circle cx="8.5" cy="7.5" r=".5"></circle>
+              <circle cx="6.5" cy="12.5" r=".5"></circle>
+              <path
+                d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.6-.2-1.1-.6-1.5-.4-.4-.6-.9-.6-1.5 0-1.1.9-2 2-2h3a3 3 0 0 0 0-6h-1">
+              </path>
+            </svg>
+          </button>
+          <div *ngIf="showThemeMenu" class="theme-dropdown">
+            <span class="theme-label">Theme</span>
+            <button class="theme-option" (click)="setTheme('dark')">
+              <div class="theme-color-indicator" style="background: #1f2937"></div>
+              <span>Dark Moon</span>
+            </button>
+            <button class="theme-option" (click)="setTheme('light')">
+              <div class="theme-color-indicator" style="background: #ffffff"></div>
+              <span>Light Day</span>
+            </button>
+            <button class="theme-option" (click)="setTheme('glass')">
+              <div class="theme-color-indicator" style="background: #e5e7eb"></div>
+              <span>Pure Glass</span>
+            </button>
+          </div>
+        </div>
+        <button class="close-btn" (click)="close()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="messages-container" #messagesContainer>
+      <div *ngFor="let msg of messages" class="message"
+        [ngClass]="msg.sender === 'user' ? 'user-message' : 'agent-message'">
+        {{ msg.text }}
+      </div>
+
+      <div *ngIf="isTyping" class="typing-indicator">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="2" x2="12" y2="6"></line>
+          <line x1="12" y1="18" x2="12" y2="22"></line>
+          <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+          <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+          <line x1="2" y1="12" x2="6" y2="12"></line>
+          <line x1="18" y1="12" x2="22" y2="12"></line>
+          <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+          <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+        </svg>
+        <span>{{ finalConfig.agentName || 'Neo ' }} is thinking...</span>
+      </div>
+
+      <div *ngIf="currentStep?.options && showOptions && !isTyping" class="options-container">
+        <button *ngFor="let opt of currentStep?.options" class="option-pill" (click)="handleOptionClick(opt)">{{
+          opt.label }}</button>
+      </div>
+
+      <div class="actions-suggestion">
+        <span class="actions-label">Frequent Actions</span>
+        <button class="action-button" (click)="handleQuickAction()">
+          <span style="margin-right: 8px;">⚡</span>
+          {{ finalConfig.actionLabel || 'Create Report' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <input class="chat-input" type="text" [(ngModel)]="input" (keypress)="$event.key === 'Enter' ? handleEnter() : ''"
+        placeholder="Type a message..." />
+      <button class="send-btn" (click)="handleSend()" [disabled]="isTyping">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
