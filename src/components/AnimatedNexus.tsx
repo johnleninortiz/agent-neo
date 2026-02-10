@@ -16,13 +16,14 @@ export default function AnimatedNexus({ state = 'idle' }: AnimatedNexusProps) {
   // Colors based on state
   const getStrokeColor = (index: number) => {
     if (state === 'idle') return '#9CA3AF'; // Gray-400
-    // Active/Thinking: Cyan/Blue gradient effect
-    // We alternate colors to create depth
-    return index % 2 === 0 ? '#06B6D4' : '#3B82F6'; // Cyan-500 / Blue-500
+    if (state === 'active') return index % 2 === 0 ? '#06B6D4' : '#3B82F6'; // Cyan-500 / Blue-500
+    
+    // Thinking: Base color (will be animated in the motion path)
+    return '#3B82F6'; // Default to Blue-500
   };
 
   const getStrokeWidth = () => {
-    return state === 'idle' ? 3 : 4; // Thicker lines (was 2/2.5)
+    return state === 'idle' ? 3 : 4; 
   };
 
   // Helper for rounded hexagon path
@@ -80,20 +81,36 @@ export default function AnimatedNexus({ state = 'idle' }: AnimatedNexusProps) {
                     initial={{ rotate: 0, scale: 1 }}
                     animate={{
                         rotate: (state === 'thinking' || state === 'idle') ? (hex.reverse ? 360 : -360) : 0,
-                        scale: state === 'thinking' ? [1, 1.02, 0.98, 1] : 1,
+                        // Thinking: Sinusoidal wave effect on scale and strokeWidth
+                        scale: state === 'thinking' ? [1, 1.15, 0.9, 1] : 1,
+                        strokeWidth: state === 'thinking' ? [4, 6, 2, 4] : getStrokeWidth(),
+                        // Thinking: Dynamic color cycle blue -> green
+                        stroke: state === 'thinking' ? ['#3B82F6', '#2DD4BF', '#10B981', '#2DD4BF', '#3B82F6'] : getStrokeColor(hex.id),
                     }}
                     transition={{
                         rotate: {
-                            duration: state === 'idle' ? hex.duration * 4 : hex.duration, // Very slow for idle
+                            duration: state === 'idle' ? hex.duration * 5 : hex.duration, // Even slower for gray idle
                             repeat: Infinity,
                             ease: "linear",
                         },
                         scale: {
-                            duration: 0.2,
+                            duration: 2,
                             repeat: Infinity,
-                            repeatType: "reverse",
                             ease: "easeInOut",
-                            delay: hex.id * 0.05
+                            // (5 - hex.id) staggers from inner (5) to outer (0) like a drop ripple
+                            delay: (5 - hex.id) * 0.15 
+                        },
+                        strokeWidth: {
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                            delay: (5 - hex.id) * 0.15
+                        },
+                        stroke: {
+                            duration: 4,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                            delay: hex.id * 0.2
                         }
                     }}
                     style={{ originX: "50%", originY: "50%" }}

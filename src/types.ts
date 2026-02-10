@@ -79,6 +79,7 @@ export interface AppConfig {
   contextBindings?: ContextBinding[];
   workflow?: InteractionStep[];
   showStopButton?: boolean;
+  keepAlive?: boolean;
 }
 
 export interface User {

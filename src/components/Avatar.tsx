@@ -14,7 +14,7 @@ const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state, isMax
   const [showGreeting, setShowGreeting] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen && state === 'idle') {
       const timer = setTimeout(() => {
         setShowGreeting(true);
       }, 2000); // Greet after 2 seconds
@@ -22,7 +22,7 @@ const Avatar: React.FC<AvatarProps> = ({ onClick, isOpen, userName, state, isMax
     } else {
       setShowGreeting(false);
     }
-  }, [isOpen]);
+  }, [isOpen, state]);
 
   return (
     <div className="agent-neo-font">

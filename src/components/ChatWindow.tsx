@@ -69,9 +69,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
   // Sync state with parent
   useEffect(() => {
     if (onStateChange) {
-        onStateChange(isTyping ? 'thinking' : 'active');
+        onStateChange((isTyping || isAutoRunning) ? 'thinking' : 'active');
     }
-  }, [isTyping, onStateChange]);
+  }, [isTyping, isAutoRunning, onStateChange]);
 
   const [currentStep, setCurrentStep] = useState<InteractionStep | undefined>();
   const [workflowState, setWorkflowState] = useState<Record<string, any>>({});

@@ -42,8 +42,8 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
   // Sync open state with agent state
   useEffect(() => {
     if (isOpen) {
-        setAgentState('active');
-    } else {
+        setAgentState(prev => prev === 'thinking' ? 'thinking' : 'active');
+    } else if (agentState !== 'thinking') {
         setAgentState('idle');
     }
   }, [isOpen]);
@@ -65,6 +65,9 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
     }
   };
 
+  // Determine if ChatWindow should be rendered/visible
+  const shouldRenderChat = finalConfig.keepAlive || isOpen;
+
   return (
     <div ref={rootRef} className="agent-neo-root">
       <style>{styles}</style>
@@ -75,17 +78,19 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
         state={agentState} 
         isMaximized={isMaximized}
       />
-      {isOpen && (
-        <ChatWindow 
-          onClose={() => setIsOpen(false)} 
-          config={finalConfig} 
-          context={context}
-          user={user}
-          onStateChange={setAgentState}
-          onAction={handleAction}
-          isMaximized={isMaximized}
-          onToggleMaximize={() => setIsMaximized(!isMaximized)}
-        />
+      {shouldRenderChat && (
+        <div style={{ display: isOpen ? 'block' : 'none' }}>
+            <ChatWindow 
+              onClose={() => setIsOpen(false)} 
+              config={finalConfig} 
+              context={context}
+              user={user}
+              onStateChange={setAgentState}
+              onAction={handleAction}
+              isMaximized={isMaximized}
+              onToggleMaximize={() => setIsMaximized(!isMaximized)}
+            />
+        </div>
       )}
     </div>
   );
