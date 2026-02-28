@@ -6,6 +6,18 @@ export interface EndpointMetadata {
   payloadTemplate?: any;
   withCredentials?: boolean;
   handler?: string | ((payload: any) => Promise<any> | any);
+  mcpBacked?: boolean; // Indicates if this tool comes from an MCP Server
+  inputSchema?: any;
+}
+
+export interface Attachment {
+  id: string;
+  file?: File;
+  base64Url?: string;
+  thumbnailUrl?: string;
+  mimeType: string;
+  name: string;
+  isPdf?: boolean;
 }
 
 export interface InteractionOption {
@@ -56,7 +68,7 @@ export interface Intent {
 
 export interface LLMProvider {
   name: string;
-  provider: 'gemini' | 'claude' | 'openai';
+  provider: 'gemini' | 'claude' | 'openai' | 'api-llm' | 'xai';
   apiKey: string;
   model?: string;
   baseUrl?: string;
@@ -67,10 +79,18 @@ export interface ContextBinding {
   data: any;
 }
 
+export interface AvatarConfig {
+  type: 'image' | 'video' | 'nexus';
+  source?: string; // URL for image/video
+  styles?: React.CSSProperties; // Custom styles
+}
+
 export interface AppConfig {
   agentName?: string;
   systemRole?: string;
+  avatar?: AvatarConfig; // New custom avatar config
   endpoints: EndpointMetadata[];
+  mcpServers?: string[]; // Array of Server-Sent Event URLs to connect to (e.g. ["http://localhost:3000/mcp/sse"])
   actionLabel?: string;
   initialStepId?: string;
   fallbackStepId?: string;
@@ -79,6 +99,9 @@ export interface AppConfig {
   contextBindings?: ContextBinding[];
   workflow?: InteractionStep[];
   showStopButton?: boolean;
+  showFrequentActions?: boolean; // New config option
+  frequentAction?: InteractionOption; // Allow customizing the action
+  greeting?: string; // Custom greeting message
   keepAlive?: boolean;
 }
 
@@ -93,4 +116,13 @@ export interface Message {
   text: string;
   sender: 'user' | 'agent';
   timestamp: number;
+  attachments?: Attachment[];
+}
+
+export interface Conversation {
+  id: string;
+  title?: string;
+  messages: Message[];
+  timestamp: number;
+  llmIndex?: number;
 }

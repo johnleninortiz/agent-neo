@@ -1,8 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Palette, Maximize, Minimize, Square } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Palette, Maximize, Minimize, Square, Paperclip, X, Plus, Clock, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { AppConfig, Message, User, InteractionStep, InteractionOption } from '../types';
+import * as pdfjsLib from 'pdfjs-dist';
+import type { AppConfig, Message, User, InteractionStep, InteractionOption, Attachment, Conversation } from '../types';
 import { callLLM, callEndpoint } from '../services/api';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 // ... (keep getSimilarity helper) ...
 
@@ -62,9 +70,66 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
       timestamp: Date.now(),
     }];
   });
+
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    try {
+      const stored = localStorage.getItem('agent-neo-conversations');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [showHistoryMenu, setShowHistoryMenu] = useState(false);
+  const [showProviderMenu, setShowProviderMenu] = useState(false);
+  const [selectedLlmIndex, setSelectedLlmIndex] = useState(0);
+  const [currentConversationId, setCurrentConversationId] = useState<string>(() => `conv-${Date.now()}`);
+
+  // Auto-sync current chat to history
+  useEffect(() => {
+    // Only save the conversation if the user has actually participated
+    const hasUserMessage = messages.some(m => m.sender === 'user');
+    if (hasUserMessage) {
+      setConversations(prev => {
+        const existingIndex = prev.findIndex(c => c.id === currentConversationId);
+        
+        const firstUserMsg = messages.find(m => m.sender === 'user')?.text;
+        let title = 'New Chat';
+        if (firstUserMsg) {
+             title = firstUserMsg.substring(0, 30) + (firstUserMsg.length > 30 ? '...' : '');
+        } else if (prev[existingIndex] && prev[existingIndex].title && prev[existingIndex].title !== 'New Chat') {
+             title = prev[existingIndex].title!;
+        }
+
+        const updatedConv: Conversation = {
+          id: currentConversationId,
+          title,
+          messages: [...messages],
+          timestamp: prev[existingIndex]?.timestamp || Date.now(),
+          llmIndex: selectedLlmIndex
+        };
+        
+        if (existingIndex >= 0) {
+          const newConvs = [...prev];
+          newConvs[existingIndex] = updatedConv;
+          return newConvs;
+        } else {
+          return [updatedConv, ...prev];
+        }
+      });
+    }
+  }, [messages, currentConversationId, selectedLlmIndex]);
+
+  // Save conversations to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('agent-neo-conversations', JSON.stringify(conversations));
+  }, [conversations]);
+
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isAutoRunning, setIsAutoRunning] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Sync state with parent
   useEffect(() => {
@@ -133,7 +198,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
     return result;
   }, [user]); // Removed lastActionResult dep since we use Ref
 
-  const addMessage = useCallback((text: string, sender: 'agent' | 'user') => {
+  const addMessage = useCallback((text: string, sender: 'agent' | 'user', attachments?: Attachment[]) => {
     setMessages((prev) => [
       ...prev,
       {
@@ -141,6 +206,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         text,
         sender,
         timestamp: Date.now(),
+        attachments
       },
     ]);
   }, []);
@@ -156,7 +222,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
     current[keys[keys.length - 1]] = value;
   };
 
-  const executeApiAction = useCallback(async (actionName: string, value?: any, payloadKey?: string, fixedPayload?: any, originalInput?: string, triggeredActions: string[] = []) => {
+  const executeApiAction = useCallback(async (actionName: string, value?: any, payloadKey?: string, fixedPayload?: any, originalInput?: string, triggeredActions: string[] = [], accumulatedResults: Record<string, any> = {}) => {
     // Check for stop signal
     if (stopSignalRef.current) {
         console.warn('Execution stopped by user.');
@@ -192,7 +258,52 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         payload = { ...payload, type: value };
       }
 
-      const result = await callEndpoint(actionName, config, payload);
+      const rawResult = await callEndpoint(actionName, config, payload);
+      let result = rawResult;
+      let toolAttachments: Attachment[] | undefined = undefined;
+
+      // Extract Base64 from MCP nested JSON strings to prevent token bloat
+      if (result && result.content && Array.isArray(result.content) && result.content[0]?.type === 'text') {
+          try {
+              const parsedText = JSON.parse(result.content[0].text);
+              if (parsedText && parsedText.screenshot) {
+                  toolAttachments = [{
+                      id: `screenshot-${Date.now()}`,
+                      name: 'screenshot.png',
+                      file: new File([""], "screenshot.png", { type: "image/png" }),
+                      base64Url: parsedText.screenshot,
+                      mimeType: 'image/png'
+                  }];
+                  
+                  delete parsedText.screenshot;
+                  result = {
+                      ...result,
+                      content: [
+                          {
+                              ...result.content[0],
+                              text: JSON.stringify(parsedText)
+                          },
+                          ...result.content.slice(1)
+                      ]
+                  };
+              }
+          } catch (e) {
+              // Not JSON or no screenshot
+          }
+      } else if (result && result.screenshot) {
+          // Fallback native tools
+          toolAttachments = [{
+              id: `screenshot-${Date.now()}`,
+              name: 'screenshot.png',
+              file: new File([""], "screenshot.png", { type: "image/png" }),
+              base64Url: result.screenshot,
+              mimeType: 'image/png'
+          }];
+          
+          result = { ...result };
+          delete result.screenshot;
+      }
+
       setLastActionResult(result); // Trigger render update
       lastResultRef.current = result; // Store for immediate access
       
@@ -203,15 +314,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
 
       // Feed result back to LLM for summarization if original input exists
       if (originalInput) {
-        // We'll implemented callLLM in services/api to handle result context
-         const fullContext = context ? `${context}\nResult Context: ${JSON.stringify(result).substring(0, 1000)}...` : undefined;
-         // Note: For now we reuse the standard callLLM but practically we might want a specialized call
-         // Ideally callLLM signature should support 'result' explicitly or we append it to context
-         const llmResponse = await callLLM(originalInput, config, result, messages, fullContext);
+         const newAccumulated = { ...accumulatedResults, [actionName]: result };
+
+         const fullContext = context ? `${context}\nResult Context: ${JSON.stringify(newAccumulated).substring(0, 1000)}...` : undefined;
+         const llmResponse = await callLLM(originalInput, config, newAccumulated, messages, fullContext, toolAttachments, selectedLlmIndex);
          
-         addMessage(llmResponse.message, 'agent');
+         addMessage(llmResponse.message, 'agent', toolAttachments);
          if (llmResponse.action) {
-             await executeApiAction(llmResponse.action.name, undefined, undefined, llmResponse.action.payload, originalInput, currentTriggeredActions);
+             await executeApiAction(llmResponse.action.name, undefined, undefined, llmResponse.action.payload, originalInput, currentTriggeredActions, newAccumulated);
          }
 
           if (actionName === 'generateReportPdf') {
@@ -476,7 +586,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         window.open(option.externalLink, '_blank');
     }
 
-    // 4. Navigate
+    // 4. Navigate or Submit
     if (option.nextStepId) {
         const stateUpdate: Record<string, any> = {};
         
@@ -494,35 +604,79 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         }
 
         scheduleAutoAdvance(option.nextStepId, 400, stateUpdate);
+    } else if (option.value && !option.triggerAction) {
+        // NEW: If no navigation is provided but a value exists, treat it as a message submission
+        // We skip option matching in the recursive call to prevent infinite loop if label == value
+        // We skip logging in handleSend because we already logged the option label above
+        await handleSend(option.value as string, true, true);
     }
   };
 
   const handleQuickAction = () => {
       cancelAutoAdvance();
-      // Just a default 'Create Report' action for now or derived from config
-      // In Angular it was: this.api.createReport(this.config) which seems hardcoded to a service method
-      // We will assume it tries to find an endpoint named 'createReport' or similar
-      // For now, let's leave it generic or implement a specific 'create report' intent manually if needed
-      // But better: use the 'actionLabel' from config and maybe a convention? 
-      // The Angular code did: await this.api.createReport(this.config); which was checking intents
-      // Let's simluate a message "Create Report" to trigger intent matching
+      
+      // If a custom frequent action is defined, use it
+      if (config.frequentAction) {
+          handleOptionClick(config.frequentAction);
+          return;
+      }
+
+      // Default behavior: Send the action label as text
       const actionLabel = config.actionLabel || 'Create Report';
       setInput(actionLabel);
       handleSend(actionLabel);
   };
   
-  const handleSend = async (manualInput?: string) => {
+  const handleSend = async (manualInput?: string, skipOptionMatching = false, skipLog = false) => {
     cancelAutoAdvance(); // User interacted, stop auto-pilot
     const textToSend = manualInput || input;
-    if (!textToSend.trim()) return;
+    // Allow send if there is text OR there are attachments
+    if (!textToSend.trim() && pendingAttachments.length === 0) return;
 
     const userInput = textToSend.trim();
     
-    // Always log the user message (whether typed or clicked)
-    addMessage(userInput, 'user');
+    // Process attachments to Base64
+    const processedAttachments: Attachment[] = [];
+    if (!skipLog) {
+        for (const attachment of pendingAttachments) {
+            if (attachment.file) {
+                // Skip converting full PDF binary to Base64 to prevent WebGL/Memory crashes
+                if (attachment.isPdf) {
+                    processedAttachments.push(attachment);
+                    continue;
+                }
+
+                const base64Url = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(attachment.file!);
+                });
+                processedAttachments.push({
+                    ...attachment,
+                    base64Url
+                });
+            } else {
+                processedAttachments.push(attachment);
+            }
+        }
+        
+        // Always log the user message (whether typed or clicked) unless suppressed
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                text: userInput,
+                sender: 'user',
+                timestamp: Date.now(),
+                attachments: processedAttachments.length > 0 ? processedAttachments : undefined
+            },
+        ]);
+    }
     
     if (!manualInput) {
         setInput('');
+        setPendingAttachments([]);
     }
     
     setIsTyping(true);
@@ -568,9 +722,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
 
       // 1. Strict Intent Matching (95%+ similarity)
       const normalizedInput = userInput.toLowerCase();
-
+      
       // Check available options first (context-aware)
-      if (current?.options) {
+      // skipOptionMatching is true when called from handleOptionClick to prevent recursion
+      if (current?.options && !skipOptionMatching) {
         for (const option of current.options) {
             const similarity = getSimilarity(normalizedInput, option.label.toLowerCase());
             if (similarity >= 0.95) {
@@ -622,7 +777,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
       // 2. LLM Prioritization
       if (config.llms && config.llms.length > 0) {
         const fullContext = context ? `${context}\n${Object.entries(workflowState).map(([k, v]) => `${k}: ${v}`).join('\n')}` : undefined;
-        const llmResponse = await callLLM(userInput, config, lastActionResult, messages, fullContext);
+        const llmResponse = await callLLM(userInput, config, lastActionResult, messages, fullContext, processedAttachments, selectedLlmIndex);
         setIsTyping(false);
         addMessage(llmResponse.message, 'agent');
         
@@ -679,6 +834,33 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
     }
   };
 
+  const handleNewChat = () => {
+      // Create new ID
+      setCurrentConversationId(`conv-${Date.now()}`);
+      
+      // Reset messages to the initial state (either empty for workflow, or default greeting)
+      setMessages(() => {
+        if (config.initialStepId) return [];
+        return [{
+          id: `msg-initial-${Date.now()}`,
+          text: `Hey ${user?.name || 'there'}! I'm ready to assist you.`,
+          sender: 'agent',
+          timestamp: Date.now(),
+        }];
+      });
+      setInput('');
+      if (config.initialStepId) goToStep(config.initialStepId);
+  };
+
+  const loadConversation = (id: string) => {
+      const targetConv = conversations.find(c => c.id === id);
+      if (!targetConv) return;
+      
+      setCurrentConversationId(targetConv.id);
+      setMessages(targetConv.messages);
+      if (targetConv.llmIndex !== undefined) setSelectedLlmIndex(targetConv.llmIndex);
+      setShowHistoryMenu(false);
+  };
 
   return (
     <div className={`chat-container glass-morphism-dark agent-neo-font ${isMaximized ? 'maximized' : ''}`} data-theme={theme}>
@@ -710,6 +892,95 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
                 >
                     {isMaximized ? <Minimize size={18} /> : <Maximize size={18} />}
                 </button>
+            )}
+
+            {/* New Chat Button */}
+            <button 
+                onClick={handleNewChat}
+                className="close-btn"
+                title="Start a new chat"
+            >
+                <Plus size={18} />
+            </button>
+
+            {/* History Selector */}
+            <div className="theme-selector-container">
+                <button 
+                    onClick={() => { setShowHistoryMenu(!showHistoryMenu); setShowThemeMenu(false); setShowProviderMenu(false); }}
+                    className="close-btn"
+                    title="Conversation History"
+                >
+                    <Clock size={18} />
+                </button>
+                <AnimatePresence>
+                    {showHistoryMenu && (
+                        <motion.div 
+                            initial={{ opacity: 0, y: -5, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                            className="theme-dropdown"
+                            style={{ minWidth: '220px', maxHeight: '300px', overflowY: 'auto' }}
+                        >
+                            <span className="theme-label">History</span>
+                            {conversations.length === 0 ? (
+                                <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-secondary)' }}>No previous chats.</div>
+                            ) : (
+                                conversations.map(c => (
+                                    <button
+                                        key={c.id}
+                                        onClick={() => loadConversation(c.id)}
+                                        className="theme-option"
+                                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '8px 12px' }}
+                                    >
+                                        <span style={{ fontSize: '13px', fontWeight: 500 }}>{c.title}</span>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                            {new Date(c.timestamp).toLocaleDateString()} {new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </button>
+                                ))
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {/* Provider Selector */}
+            {config.llms && config.llms.length > 0 && (
+                <div className="theme-selector-container">
+                    <button 
+                        onClick={() => { setShowProviderMenu(!showProviderMenu); setShowThemeMenu(false); setShowHistoryMenu(false); }}
+                        className="close-btn"
+                        title="Select LLM Provider"
+                    >
+                        <UserIcon size={18} />
+                    </button>
+                    <AnimatePresence>
+                        {showProviderMenu && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: -5, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -5, scale: 0.95 }}
+                                className="theme-dropdown"
+                            >
+                                <span className="theme-label">Agent Brain</span>
+                                {config.llms.map((_llm, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => { setSelectedLlmIndex(idx); setShowProviderMenu(false); }}
+                                        className="theme-option"
+                                        style={{ opacity: selectedLlmIndex === idx ? 1 : 0.7 }}
+                                    >
+                                        <div 
+                                          className="theme-color-indicator" 
+                                          style={{ background: selectedLlmIndex === idx ? '#10b981' : 'transparent', border: selectedLlmIndex === idx ? 'none' : '1px solid var(--border-color)' }}
+                                        ></div>
+                                        <span>Agent {String.fromCharCode(65 + idx)}</span>
+                                    </button>
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             )}
 
             {/* Theme Selector */}
@@ -765,7 +1036,60 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
             key={msg.id}
             className={`message ${msg.sender === 'user' ? 'user-message' : 'agent-message'}`}
           >
-            {msg.text}
+            {msg.attachments && msg.attachments.length > 0 && (
+                <div className="message-attachments" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    {msg.attachments.map(att => (
+                        <div key={att.id} style={{ maxWidth: '200px', borderRadius: '8px', overflow: 'hidden' }}>
+                            {att.mimeType.startsWith('image/') || att.thumbnailUrl ? (
+                                <div style={{ position: 'relative' }}>
+                                    <img src={att.thumbnailUrl || att.base64Url} alt={att.name} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                                    {att.isPdf && (
+                                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.6)', color: 'white', fontSize: '10px', padding: '2px 4px', textAlign: 'center' }}>PDF Document</div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ padding: '8px', background: 'rgba(0,0,0,0.1)', fontSize: '12px' }}>📄 {att.name}</div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+            {msg.sender === 'user' ? (
+                <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+            ) : (
+                <div className="msg-markdown" style={{ fontSize: '14px', lineHeight: '1.6', width: '100%', overflowX: 'auto' }}>
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            code({ node, inline, className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '');
+                                return !inline ? (
+                                    <SyntaxHighlighter
+                                        {...props}
+                                        style={vscDarkPlus as any}
+                                        language={match ? match[1] : 'text'}
+                                        PreTag="div"
+                                        customStyle={{ borderRadius: '6px', margin: '8px 0', fontSize: '13px', background: '#1e1e1e' }}
+                                    >
+                                        {String(children).replace(/\n$/, '')}
+                                    </SyntaxHighlighter>
+                                ) : (
+                                    <code className={className} {...props} style={{ background: 'rgba(128,128,128,0.25)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.9em' }}>
+                                        {children}
+                                    </code>
+                                );
+                            },
+                            p: ({node, ...props}) => <p style={{ margin: '8px 0' }} {...props} />,
+                            ul: ({node, ...props}) => <ul style={{ paddingLeft: '20px', margin: '8px 0', listStyleType: 'disc' }} {...props} />,
+                            ol: ({node, ...props}) => <ol style={{ paddingLeft: '20px', margin: '8px 0', listStyleType: 'decimal' }} {...props} />,
+                            li: ({node, ...props}) => <li style={{ marginBottom: '4px' }} {...props} />,
+                            a: ({node, ...props}) => <a style={{ color: '#3b82f6', textDecoration: 'underline' }} target="_blank" rel="noopener noreferrer" {...props} />
+                        }}
+                    >
+                        {msg.text}
+                    </ReactMarkdown>
+                </div>
+            )}
           </div>
         ))}
         {isTyping && (
@@ -797,36 +1121,116 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ onClose, config, context, user,
         </AnimatePresence>
 
         {/* Quick Actions Suggestion */}
-        <div className="actions-suggestion">
-           <span className="actions-label">Frequent Actions</span>
-           <button className="action-button" onClick={handleQuickAction}>
-             <span style={{ marginRight: '8px' }}>⚡</span>
-             {config.actionLabel || 'Create Report'}
-           </button>
-        </div>
+        {config.showFrequentActions && (
+          <div className="actions-suggestion">
+             <span className="actions-label">Frequent Actions</span>
+             <button className="action-button" onClick={handleQuickAction}>
+               <span style={{ marginRight: '8px' }}>⚡</span>
+               {config.frequentAction?.label || config.actionLabel || 'Create Report'}
+             </button>
+          </div>
+        )}
 
       </div>
 
 
-      <div className="input-area">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Type a message..."
-          className="chat-input"
-        />
-        <button
-          onClick={() => handleSend()}
-          className="send-btn"
-          disabled={isTyping}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+      <div className="input-area-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 15px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+        
+        {pendingAttachments.length > 0 && (
+            <div className="attachment-preview-bar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                {pendingAttachments.map(att => (
+                    <div key={att.id} style={{ position: 'relative', width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                        {att.thumbnailUrl ? (
+                             <img src={att.thumbnailUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : att.file && att.mimeType.startsWith('image/') ? (
+                             <img src={URL.createObjectURL(att.file)} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-tertiary)', fontSize: '24px' }}>📄</div>
+                        )}
+                        <button 
+                            onClick={() => setPendingAttachments(prev => prev.filter(p => p.id !== att.id))}
+                            style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+        )}
+
+        <div className="input-area" style={{ padding: 0, border: 'none', background: 'transparent' }}>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="attach-btn"
+            style={{ padding: '8px', color: 'var(--text-secondary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+            title="Attach file"
+          >
+            <Paperclip size={20} />
+          </button>
+          <input 
+             type="file" 
+             multiple 
+             ref={fileInputRef} 
+             style={{ display: 'none' }} 
+             accept="image/*,application/pdf,text/plain"
+             onChange={async (e) => {
+                 if (e.target.files) {
+                     const filesArray = Array.from(e.target.files);
+                     const newAtts: Attachment[] = [];
+                     
+                     for (const file of filesArray) {
+                         const att: Attachment = {
+                             id: `att-${Date.now()}-${Math.random().toString(36).substr(2,9)}`,
+                             file,
+                             mimeType: file.type,
+                             name: file.name
+                         };
+                         
+                         if (file.type === 'application/pdf') {
+                             att.isPdf = true;
+                             try {
+                                 const arrayBuffer = await file.arrayBuffer();
+                                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                                 const page = await pdf.getPage(1);
+                                 const viewport = page.getViewport({ scale: 1.0 });
+                                 const canvas = document.createElement('canvas');
+                                 const ctx = canvas.getContext('2d');
+                                 canvas.height = viewport.height;
+                                 canvas.width = viewport.width;
+                                 if (ctx) {
+                                     await page.render({ canvasContext: ctx, viewport }).promise;
+                                     att.thumbnailUrl = canvas.toDataURL('image/jpeg', 0.8);
+                                 }
+                             } catch (err) {
+                                 console.error("PDF Thumbnail Generation Failed:", err);
+                             }
+                         }
+                         newAtts.push(att);
+                     }
+                     setPendingAttachments(prev => [...prev, ...newAtts]);
+                 }
+                 e.target.value = ''; // Reset
+             }}
+          />
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Type a message..."
+            className="chat-input"
+          />
+          <button
+            onClick={() => handleSend()}
+            className="send-btn"
+            disabled={isTyping}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );

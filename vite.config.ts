@@ -20,8 +20,18 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      // Externalize peers in standard build, bundle them in standalone
-      // Use regex to catch sub-paths like react/jsx-runtime
+      /**
+       * IMPORTANT: Standalone build vs. Standard build
+       * 
+       * 1. Standard build (agent-neo.js): Externalizes React/React-DOM. The host project 
+       *    MUST provide these as dependencies (e.g., in a React app).
+       * 
+       * 2. Standalone build (agent-neo.standalone.js): Bundles React/React-DOM internally.
+       *    This allows the component to work as a self-contained Web Component in 
+       *    non-React environments (Angular, Vue, Vanilla JS) without adding React 
+       *    to the host project's dependencies.
+       */
+      // Externalize peers in standard build, bundle them in standalone, prefer standalone if possible
       external: isStandalone ? [] : [
         /^react/,
         /^react-dom/

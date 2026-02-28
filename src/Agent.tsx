@@ -5,6 +5,7 @@ import type { AppConfig, User } from './types';
 import styles from './index.css?inline';
 
 import { presets } from './presets';
+import { mcpManager } from './services/mcp';
 
 interface AgentProps {
   config: AppConfig;
@@ -17,24 +18,43 @@ interface AgentProps {
 const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }) => {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const [mcpReadyCount, setMcpReadyCount] = useState(0);
 
-  // Merge preset config with user config
-  // User config takes precedence
+  // Auto-connect to MCP Servers if configured
+  useEffect(() => {
+    console.log('Conversion software version 7.0');
+    if (config.mcpServers && config.mcpServers.length > 0) {
+      Promise.all(config.mcpServers.map(serverUrl => 
+        mcpManager.connect(serverUrl, () => setMcpReadyCount(prev => prev + 1))
+      ));
+    } else {
+      setMcpReadyCount(1);
+    }
+  }, [config.mcpServers]);
+
+  // Merge preset config with user config and mapped MCP endpoints
   const finalConfig: AppConfig = React.useMemo(() => {
+    let baseConfig = { ...config, endpoints: [...(config.endpoints || [])] };
     if (preset && presets[preset]) {
       const presetConfig = presets[preset];
-      return {
+      baseConfig = {
         ...presetConfig,
         ...config,
-        // Merge arrays instead of overwriting
         endpoints: [...(presetConfig.endpoints || []), ...(config.endpoints || [])],
         intents: [...(presetConfig.intents || []), ...(config.intents || [])],
-        // Workflows are usually custom, so keep overwrite behavior or merge?
-        // Let's overwrite workflow for now as it's complex to merge graph steps
       } as AppConfig;
     }
-    return config;
-  }, [config, preset]);
+
+    // Mix in MCP Endpoints so LLM / UI can use them
+    if (mcpReadyCount > 0) {
+      const mcpEndpoints = mcpManager.getEndpoints();
+      if (mcpEndpoints.length > 0) {
+        baseConfig.endpoints = [...baseConfig.endpoints, ...mcpEndpoints];
+      }
+    }
+    
+    return baseConfig;
+  }, [config, preset, mcpReadyCount]);
 
   const [agentState, setAgentState] = useState<'idle' | 'active' | 'thinking'>('idle');
   const [isMaximized, setIsMaximized] = useState(false);
@@ -77,6 +97,7 @@ const Agent: React.FC<AgentProps> = ({ config, preset, context, user, onAction }
         userName={user?.name}
         state={agentState} 
         isMaximized={isMaximized}
+        config={finalConfig}
       />
       {shouldRenderChat && (
         <div style={{ display: isOpen ? 'block' : 'none' }}>
